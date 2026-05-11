@@ -56,6 +56,8 @@ The system must allow:
 
 \- report deletion
 
+\- filtering by status and urgency level
+
 \- generation of statistical reports
 
 \- persistence of data after program termination
@@ -142,6 +144,12 @@ The system supports:
 
 \- report statistics generation
 
+\- urgency-based management of reports
+
+
+
+All functionalities are implemented using Abstract Data Types (ADT) and modular C programming.
+
 
 
 \---
@@ -170,6 +178,8 @@ The project must guarantee:
 
 \- dynamic memory management
 
+\- ADT-based design
+
 
 
 \---
@@ -186,11 +196,21 @@ Persistent information is stored using text files inside the `data/` directory.
 
 The system maintains:
 
-\- user data
+\- users
 
-\- employee data
+\- employees
 
-\- report data
+\- reports\_master
+
+\- derived report files
+
+
+
+The architecture distinguishes between:
+
+\- primary persistent storage (master files)
+
+\- automatically generated derived files
 
 
 
@@ -214,7 +234,7 @@ The application simulates backend processing by:
 
 \- loading reports into memory
 
-\- generating auxiliary structures
+\- generating auxiliary ADTs
 
 \- creating filtered report views
 
@@ -240,23 +260,27 @@ The system distinguishes between:
 
 \### Persistent Data
 
+
+
 Stored permanently on files:
 
 \- users
 
 \- employees
 
-\- reports
+\- reports\_master
 
 
 
 \### Volatile Data
 
+
+
 Stored temporarily in RAM:
 
-\- action history
+\- action history (stack ADT)
 
-\- runtime indexes
+\- runtime indexes (hash table ADT)
 
 \- temporary sorted structures
 
@@ -274,17 +298,21 @@ Stored temporarily in RAM:
 
 The project emphasizes:
 
+
+
 \- Abstract Data Types (ADT)
 
 \- Information Hiding
 
 \- modular programming
 
-\- dynamic structures
+\- dynamic memory structures
 
 \- computational complexity analysis
 
+\- separation between persistent storage and runtime processing
 
 
-The implementation aims to simulate realistic backend behaviors using only standard C and local file management.
+
+The system is designed as a simulation of a municipal backend, where all processing is handled locally without external servers, using only C standard programming techniques.
 

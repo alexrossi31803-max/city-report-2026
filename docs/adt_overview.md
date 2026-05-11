@@ -52,8 +52,6 @@ The User ADT represents both citizens and municipal employees interacting with t
 
 Each user contains:
 
-
-
 \- unique identifier
 
 \- username
@@ -112,8 +110,6 @@ It is the core entity of the system.
 
 A report contains:
 
-
-
 \- unique identifier
 
 \- citizen name
@@ -165,6 +161,10 @@ The Report ADT encapsulates all data related to a single report, ensuring consis
 
 
 The Report List ADT manages a dynamic collection of reports using a linked list structure.
+
+
+
+The linked list is the primary in-memory structure used after loading data from persistent storage.
 
 
 
@@ -440,8 +440,6 @@ Proper memory management is essential to avoid leaks.
 
 The system is designed with efficiency considerations:
 
-
-
 \- Linked List → flexible but linear search
 
 \- Hash Table → fast lookup
@@ -464,13 +462,11 @@ The combination of ADTs allows balancing simplicity and performance.
 
 ADTs are used to separate responsibilities:
 
-
-
 \- User ADT → authentication layer
 
 \- Report ADT → core domain entity
 
-\- Report List → data storage layer
+\- Report List → storage layer (in-memory)
 
 \- Hash Table → indexing layer
 
@@ -478,7 +474,65 @@ ADTs are used to separate responsibilities:
 
 
 
-This separation reflects a layered architecture similar to real backend systems.
+This separation reflects a layered architecture inspired by real backend systems.
+
+
+
+\---
+
+
+
+\# ADT Interaction Model
+
+
+
+The system follows this conceptual data flow:
+
+
+
+```text
+
+Persistent Files (storage layer)
+
+&#x20;       ↓
+
+Parsing / Loading phase
+
+&#x20;       ↓
+
+ADT Layer (User, Report)
+
+&#x20;       ↓
+
+In-memory structures (Lists, Hash Tables)
+
+&#x20;       ↓
+
+Runtime processing (Stack, filtering, sorting)
+
+&#x20;       ↓
+
+Derived file generation
+
+```
+
+This layered interaction separates:
+
+
+
+\- persistence
+
+\- data modeling
+
+\- storage
+
+\- indexing
+
+\- runtime behavior
+
+
+
+and improves modularity and maintainability.
 
 
 
@@ -490,11 +544,13 @@ This separation reflects a layered architecture similar to real backend systems.
 
 
 
-The use of ADTs in this project allows the simulation of a structured backend system using only procedural C programming.
+The use of ADTs in this project allows the simulation of a structured municipal backend system using only procedural C programming.
 
 
 
 Each ADT has been selected to balance:
+
+
 
 \- simplicity
 
@@ -503,4 +559,6 @@ Each ADT has been selected to balance:
 \- educational value
 
 \- consistency with course topics
+
+
 
