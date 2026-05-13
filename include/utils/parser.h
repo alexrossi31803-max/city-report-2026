@@ -1,44 +1,25 @@
 #ifndef PARSER_H
 #define PARSER_H
 
-/*
-  PARSER ADT - Data Parsing Module
- 
-  This module is responsible for converting raw input data
-  (typically from stdin or files) into structured system objects.
-
-  It acts as a bridge between external representation (strings)
-  and internal ADT structures.
- 
-  It is strictly separated from business logic to ensure modularity
-  and information hiding.
- */
-
+#include <stdio.h>
+#include "../models/user.h"
 #include "../models/report.h"
 
-/*
- parse_report -> Converts a formatted string into a Report ADT instance.
-  Used when loading data from files or structured input
-  
-  PRECONDITIONS:
-  raw_input must be a valid formatted string representing a report
-  format must match expected system structure
-  POSTCONDITIONS:
-  returns a fully initialized Report object
-  returned object contains parsed and validated fields
- */
-Report parse_report(const char* raw_input);
+// Formatta una stringa inserendo spazi in coda per raggiungere la dimensione fissa desiderata
+void pad_string(char* dest, const char* src, int fixed_length);
 
-/*
- parse_int -> Converts string to integer with basic validation
- PRECONDITIONS:
- raw_input must be a valid formatted string representing a report
- format must match expected system structure
- 
- POSTCONDITIONS:
- returns a fully initialized Report object
- returned object contains parsed and validated fields
- */
-int parse_int(const char* str);
+// Rimuove gli spazi in coda inseriti dal padding durante la lettura dal file .txt
+void trim_string(char* str);
+
+// PARSER UTENTE: Scrive e legge un utente in formato riga fissa .txt (107 char)
+void user_to_line(char* line_buffer, int id, const char* user, const char* pass, UserRole role);
+void line_to_user_data(const char* line_buffer, int* id, char* user, char* pass, UserRole* role);
+
+// PARSER REPORT: Scrive e legge un report in formato riga fissa .txt (281 char)
+void report_to_line(char* line_buffer, Report r, char record_state);
+Report line_to_report(const char* line_buffer, char* record_state, int* citizen_id_out);
+
+// Funzione callback per stampare un report tramite il BST o code
+void write_report_callback(FILE* f_out, Report r);
 
 #endif

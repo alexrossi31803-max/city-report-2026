@@ -1,305 +1,104 @@
-# System Architecture
-
-## General Architecture
-
-The project simulates a simplified municipal backend system entirely implemented in standard C.
-
-The application is composed of:
-- persistent storage files
-- volatile in-memory structures
-- simulated backend processing modules
-- user authentication and role management
-
-The architecture follows a modular approach based on Abstract Data Types (ADT) and Information Hiding principles.
+# Questo documento illustra la struttura del sistema, i flussi operativi dei dati e il funzionamento dell'architettura a tre livelli di memoria tra RAM, file di supporto e database master.
 
 ---
 
-## System Workflow
+# 🏢 1. Schema Architetturale dei Componenti
 
-The application follows this execution pipeline:
+Il sistema è strutturato secondo una netta separazione dei ruoli per impedire la manipolazione incontrollata dei file:
 
 ```text
-Program Startup
-        ↓
-Load Persistent Files
-        ↓
-Build RAM Structures
-        ↓
-Generate Runtime Indexes
-        ↓
-Generate Derived Files
-        ↓
-User Interaction
-        ↓
-Data Update
-        ↓
-Refresh Runtime Structures
-        ↓
-Save Persistent Data
++-------------------------------------------------------+
+|                       MAIN.C                          |
+|  (Interfaccia Utente Testuale / Menu Cittadino e Dip)|
++---------------------------+---------------------------+
+                            |
+                            | (Passa solo Opaque Pointers)
+                            v
++---------------------------+---------------------------+
+|               CONTROLLORI SERVER                      |
+|   (user_manager.c  <--->  report_manager.c)          |
++-----------+----------------+----------------+---------+
+            |                |                |
+            v                v                v
++--------------+     +--------------+     +-------------+
+| UTILS/       |     | ADT/         |     | DATABASE/   |
+| (parser.c)   |     | (lists, bst) |     | (.txt fisse)|
++--------------+     +--------------+     +-------------+
 ```
----
 
-## User Roles
-
-The system distinguishes two main actors:
-
-## Citizen
-
-Citizens can:
-
-- authenticate into the system
-- create reports
-- visualize their own reports
-
-Citizens have limited permissions.
----
-
-## Municipal Employee
-
-Employees can:
-
-- visualize all reports
-- search reports
-- update report status
-- delete reports
-- generate statistical reports
-- access filtered report views
-
-Employees represent the administrative management component of the system.
+Usa il codice con cautela.
 
 ---
 
-## Persistent Storage
+# 🔄 2. Ciclo di Vita dei Report (Meccanismo di Flushing e Soglia)
 
-Persistent data is stored inside the data/ directory using text files.
-
-The project distinguishes between:
-
-## Master Files
-
-Master files represent the primary persistent storage.
-
-users.txt
-
-Contains registered citizen accounts.
-
-employees.txt
-
-Contains municipal employee accounts.
-
-reports_master.txt
-
-Contains all registered reports.
-
-This file represents the main source of truth for report persistence.
+Il sistema mitiga il costo delle scritture su disco delegando le operazioni a strutture intermedie:
 
 ---
 
-## Derived Files
+## Fase Locale (RAM)
 
-Derived files are automatically generated from the master report file.
+Il cittadino compila una segnalazione.
 
-These files simulate backend indexing and preprocessing operations.
+Questa risiede esclusivamente nella `ReportList` in RAM.
 
-Examples:
+Se l'utente commette errori, modifica il record; la versione precedente viene salvata nel `ReportStack`.
 
-- reports_open.txt
-- reports_closed.txt
-- reports_by_priority.txt
-- reports_by_category.txt
+L'azione di Undo estrae dallo stack e ripristina la lista.
 
-Derived files are regenerated whenever report data changes.
+Il database non viene toccato.
 
 ---
 
-## Runtime Memory Model
+## Fase Transitoria (Cache su File)
 
-At program startup, persistent files are loaded into RAM structures.
+Al momento del logout, la lista RAM viene riversata nel file `reports_bench.txt` (capacità 50 righe a lunghezza fissa da 281 caratteri).
 
-The system performs most operations in memory to improve efficiency and simplify data manipulation.
+Questo file funge da "lavagna di supporto" comune.
 
-The runtime model distinguishes between:
-
-- persistent data
-- volatile runtime structures
+Qui le segnalazioni `OPEN` sono ancora modificabili ed eliminabili (marcando l'ultimo carattere del record su `'E'`).
 
 ---
 
-## Volatile Runtime Structures
+## Fase Consolidata (Flushing & Svuotamento)
 
-Volatile structures exist only during program execution.
+Quando il `reports_bench.txt` è saturo (vicino a 50 elementi), il server avvia il flushing pesante:
 
-These include:
-
-- linked lists
-- hash indexes
-- action history stacks
-- temporary sorting structures
-- filtering structures
-
-These structures are rebuilt at every program startup.
-
---- 
-
-## Simulated Backend Processing
-
-The project simulates backend processing without using real servers or concurrency mechanisms.
-
-Backend operations are implemented through sequential functions that:
-
-- load data
-- organize structures
-- regenerate indexes
-- rebuild derived files
-- refresh filtered views
-
-This approach allows the system to simulate realistic backend behavior while remaining compatible with standard C programming techniques.
+- I record marcati con `'E'` vengono distrutti.
+- I restanti record attivi vengono smistati in base al loro stato nei file sequenziali incrementali:
+  - `open_latest.txt`
+  - `in_progress_latest.txt`
+  - `closed_latest.txt`
 
 ---
 
-## Refresh Workflow
+## Sincronizzazione Pesante ed Azzeramento (Soglia)
 
-Whenever the system performs a critical operation such as:
+Il server mantiene un contatore cumulativo delle modifiche.
 
-- report insertion
-- report deletion
-- report status update
+Ogni 50 elementi aggiunti nei file `_latest.txt`, il sistema azzera il contatore e avvia la rigenerazione di sfondo delle strutture derivate:
 
-the application automatically executes a refresh process.
+- Legge tutti i file master, crea in RAM il grande albero strutturato e sovrascrive il file `report_BST_ID_USER.txt` con la nuova vista In-Order, garantendo ricerche storiche in \(O(\log n)\).
 
-The refresh process:
-
-- updates RAM structures
-- rebuilds indexes
-- regenerates derived files
-- synchronizes persistent storage
-
-This mechanism replaces the need for background services or periodic server synchronization.
+- Filtra i record escludendo i casi `CLOSED`, li ordina nella coda e rigenera l'array lineare statico ordinato `reports_by_priority.txt` per la dashboard del dipendente.
 
 ---
 
-## Report Lifecycle
+# 🔐 3. Sicurezza e Accesso Diretto dei File di Testo
 
-A report follows this lifecycle:
-```text
-Creation
-    ↓
-Storage in Master File
-    ↓
-Loading into RAM
-    ↓
-Indexing and Classification
-    ↓
-Visualization and Management
-    ↓
-Status Update / Deletion
-    ↓
-Refresh and Synchronization
+Tutti i file all'interno del sistema (anagrafiche ed elenchi) utilizzano stringhe a dimensione fissa integrate da caratteri di spazio `" "` (padding).
+
+Questo approccio garantisce che:
+
+- ogni riga utente occupi sempre 107 caratteri
+- ogni riga report occupi sempre 281 caratteri
+
+Grazie a questa geometria speculare sul disco, l'applicazione può usare la funzione:
+
+```c
+fseek(file, indice * dimensione_riga, SEEK_SET)
 ```
----
 
-## Pagination System
+bypassando completamente la lettura sequenziale del testo.
 
-The system avoids printing all reports simultaneously.
-
-Report visualization uses pagination:
-
-- only a limited number of reports is shown at once
-- additional reports can be loaded incrementally
-
-This improves:
-
-- readability
-- usability
-- testing quality
-
----
-
-## Data Structures Overview
-
-The project combines multiple ADTs.
-## Linked Lists
-
-Used for:
-
-- dynamic report storage
-- user storage
-- traversal operations
-
----
-
-## Hash Tables
-Used for:
-
-- fast report lookup by identifier
-
-Hashing improves average search complexity.
-
----
-
-## Stacks
-
-Used for:
-
-- action history
-- undo-like operations
-- runtime activity tracking
-
-Stacks are volatile and exist only in RAM.
-
----
-
-## Computational Considerations
-
-The architecture prioritizes:
-
-- modularity
-- maintainability
-- efficient search operations
-- dynamic memory management
-
-The system intentionally separates:
-
-- persistent storage
-- runtime processing
-- indexing structures
-
-This improves scalability and organization.
-
-## Future Extensions
-
-Possible future improvements include:
-
-- priority heap structures
-- queue-based processing simulation
-- advanced caching systems
-- binary file persistence
-- report export systems
-- administrative analytics
-- automatic cleanup procedures
-
-These features are intentionally excluded from the current implementation to preserve simplicity and maintainability.
-
----
-
-## Design Philosophy
-
-The project aims to simulate a realistic municipal management platform while remaining compatible with:
-
-- procedural programming
-- standard C
-- ADT-oriented design
-- educational software engineering principles
-
-The implementation emphasizes:
-
-- abstraction
-- modularity
-- information hiding
-- data persistence
-- computational complexity awareness
----
-
-
-
-
+Ciò assicura che il controllo delle credenziali e le interrogazioni per codice identificativo avvengano in tempo costante \(O(1)\), simulando il comportamento prestazionale di un database di livello enterprise su semplici file `.txt` leggibili.

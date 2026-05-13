@@ -1,564 +1,183 @@
-\# Abstract Data Types (ADT) Overview
+# Questo documento contiene la specifica formale delle operazioni fornite dagli ADT creati, nel pieno rispetto del principio dell'Information Hiding.
 
+---
 
+# 1️⃣ ADT ReportList
 
-\## Introduction
-
-
-
-The system is designed using the Abstract Data Type (ADT) paradigm in order to achieve modularity, data abstraction, and separation between interface and implementation.
-
-
-
-Each core component of the system is modeled as an ADT to encapsulate data structures and operations while hiding internal implementation details.
-
-
-
-This approach follows the principles of:
-
-\- Information Hiding
-
-\- Data Abstraction
-
-\- Modular Programming
-
-\- Separation of Concerns
-
-
-
-\---
-
-
-
-\# Core ADTs in the System
-
-
-
-\## 1. ADT User
-
-
-
-\### Description
-
-
-
-The User ADT represents both citizens and municipal employees interacting with the system.
-
-
-
-\### Representation
-
-
-
-Each user contains:
-
-\- unique identifier
-
-\- username
-
-\- password
-
-\- role (citizen or employee)
-
-
-
-\### Operations
-
-
-
-\- create user
-
-\- authenticate user
-
-\- validate credentials
-
-\- retrieve user role
-
-
-
-\### Design Motivation
-
-
-
-The User ADT encapsulates authentication logic and role management, ensuring that user data is not directly manipulated by external modules.
-
-
-
-\---
-
-
-
-\## 2. ADT Report
-
-
-
-\### Description
-
-
-
-The Report ADT represents a municipal issue reported by a citizen.
-
-
-
-It is the core entity of the system.
-
-
-
-\### Representation
-
-
-
-A report contains:
-
-\- unique identifier
-
-\- citizen name
-
-\- category
-
-\- description
-
-\- creation date
-
-\- urgency level
-
-\- status
-
-
-
-\### Operations
-
-
-
-\- create report
-
-\- update status
-
-\- retrieve report data
-
-\- validate report fields
-
-
-
-\### Design Motivation
-
-
-
-The Report ADT encapsulates all data related to a single report, ensuring consistency and preventing invalid modifications.
-
-
-
-\---
-
-
-
-\## 3. ADT Report List (Linked List)
-
-
-
-\### Description
-
-
-
-The Report List ADT manages a dynamic collection of reports using a linked list structure.
-
-
-
-The linked list is the primary in-memory structure used after loading data from persistent storage.
-
-
-
-\### Operations
-
-
-
-\- insert report
-
-\- delete report
-
-\- search by ID
-
-\- search by category
-
-\- traverse list
-
-\- update report node
-
-
-
-\### Design Motivation
-
-
-
-A linked list is chosen because:
-
-\- the number of reports is dynamic
-
-\- frequent insertions and deletions are required
-
-\- memory is allocated dynamically
-
-\- sequential traversal is sufficient for most operations
-
-
-
-\### Complexity
-
-
-
-\- insertion: O(1)
-
-\- search: O(n)
-
-\- deletion: O(n)
-
-
-
-\---
-
-
-
-\## 4. ADT User List
-
-
-
-\### Description
-
-
-
-Manages a dynamic collection of users.
-
-
-
-\### Operations
-
-
-
-\- insert user
-
-\- find user
-
-\- authenticate user
-
-\- traverse users
-
-
-
-\### Design Motivation
-
-
-
-A linked list is sufficient due to the limited number of users and simplicity of operations.
-
-
-
-\---
-
-
-
-\## 5. ADT Hash Table (Report Index)
-
-
-
-\### Description
-
-
-
-A hash table is used to provide fast access to reports by their unique identifier.
-
-
-
-\### Operations
-
-
-
-\- insert key-value pair (ID → Report)
-
-\- search report by ID
-
-\- delete entry
-
-\- update entry
-
-
-
-\### Design Motivation
-
-
-
-The hash table significantly improves lookup performance compared to linear search in a linked list.
-
-
-
-\### Complexity
-
-
-
-\- average search: O(1)
-
-\- worst case: O(n)
-
-
-
-\---
-
-
-
-\## 6. ADT Stack (Action History)
-
-
-
-\### Description
-
-
-
-The Stack ADT is used to store user actions during runtime.
-
-
-
-\### Operations
-
-
-
-\- push action
-
-\- pop action
-
-\- view last action
-
-
-
-\### Use Cases
-
-
-
-\- undo-like behavior simulation
-
-\- logging recent operations
-
-\- debugging support
-
-
-
-\### Design Motivation
-
-
-
-A stack is appropriate because it follows LIFO behavior, which matches the concept of undoing the most recent operation first.
-
-
-
-\---
-
-
-
-\## 7. (Optional) ADT Queue (Future Extension)
-
-
-
-\### Description
-
-
-
-A queue could be used to simulate processing order of incoming reports.
-
-
-
-\### Operations
-
-
-
-\- enqueue report
-
-\- dequeue report
-
-\- view front element
-
-
-
-\### Design Motivation
-
-
-
-A queue follows FIFO behavior and could be used to model real-world report processing pipelines.
-
-
-
-This ADT is considered a possible extension and not mandatory in the current implementation.
-
-
-
-\---
-
-
-
-\# Global Design Considerations
-
-
-
-\## Information Hiding
-
-
-
-Each ADT exposes only its interface while hiding internal implementation details. This ensures:
-
-\- modularity
-
-\- maintainability
-
-\- safe data manipulation
-
-
-
-\---
-
-
-
-\## Memory Management
-
-
-
-All ADTs relying on dynamic memory (lists, stacks, hash tables) use:
-
-\- malloc
-
-\- free
-
-
-
-Proper memory management is essential to avoid leaks.
-
-
-
-\---
-
-
-
-\## Computational Complexity
-
-
-
-The system is designed with efficiency considerations:
-
-\- Linked List → flexible but linear search
-
-\- Hash Table → fast lookup
-
-\- Stack → constant-time operations
-
-
-
-The combination of ADTs allows balancing simplicity and performance.
-
-
-
-\---
-
-
-
-\## Architectural Role of ADTs
-
-
-
-ADTs are used to separate responsibilities:
-
-\- User ADT → authentication layer
-
-\- Report ADT → core domain entity
-
-\- Report List → storage layer (in-memory)
-
-\- Hash Table → indexing layer
-
-\- Stack → runtime behavior tracking
-
-
-
-This separation reflects a layered architecture inspired by real backend systems.
-
-
-
-\---
-
-
-
-\# ADT Interaction Model
-
-
-
-The system follows this conceptual data flow:
-
-
-
-```text
-
-Persistent Files (storage layer)
-
-&#x20;       ↓
-
-Parsing / Loading phase
-
-&#x20;       ↓
-
-ADT Layer (User, Report)
-
-&#x20;       ↓
-
-In-memory structures (Lists, Hash Tables)
-
-&#x20;       ↓
-
-Runtime processing (Stack, filtering, sorting)
-
-&#x20;       ↓
-
-Derived file generation
-
+## Tipo:
+```c
+typedef struct ReportList* ReportList;
 ```
 
-This layered interaction separates:
+(Opaque Pointer).
 
+---
 
+## Operazioni:
 
-\- persistence
+### `ReportList create_list();`
 
-\- data modeling
+#### Input:
+Nessuno.
 
-\- storage
+#### Output:
+Puntatore a una lista inizializzata.
 
-\- indexing
+#### Pre-condizioni:
+Memoria di sistema disponibile.
 
-\- runtime behavior
+#### Post-condizioni:
+Ritorna un'istanza di lista con dimensione pari a 0 e puntatori a NULL.
 
+---
 
+### `void list_insert(ReportList l, Report r);`
 
-and improves modularity and maintainability.
+#### Input:
+La lista `l`, il puntatore all'oggetto `Report r`.
 
+#### Pre-condizioni:
+`l` non deve essere `NULL`, `r` deve essere un report valido.
 
+#### Post-condizioni:
+`r` viene inserito in testa alla lista. La dimensione aumenta di 1.
 
-\---
+---
 
+### `bool list_remove(ReportList l, int report_id);`
 
+#### Input:
+La lista `l`, l'ID intero del report da rimuovere.
 
-\## Conclusion
+#### Output:
+`true` se rimosso, `false` altrimenti.
 
+#### Post-condizioni:
+Se trovato, il nodo viene rimosso e deallocato. La dimensione diminuisce di 1.
 
+#### Effetti collaterali:
+Deallocazione della memoria del report.
 
-The use of ADTs in this project allows the simulation of a structured municipal backend system using only procedural C programming.
+---
 
+# 2️⃣ ADT ReportStack
 
+## Tipo:
+```c
+typedef struct ReportStack* ReportStack;
+```
 
-Each ADT has been selected to balance:
+(Opaque Pointer).
 
+---
 
+## Operazioni:
 
-\- simplicity
+### `bool stack_push(ReportStack s, Report r);`
 
-\- efficiency
+#### Input:
+Lo stack `s`, il report corrente `r`.
 
-\- educational value
+#### Output:
+`true` se inserito, `false` se lo stack è pieno (max 10).
 
-\- consistency with course topics
+#### Post-condizioni:
+Viene allocata una copia esatta di `r` (clonazione profonda) e inserita in cima allo stack.
 
+---
 
+### `Report stack_pop(ReportStack s);`
+
+#### Input:
+Lo stack `s`.
+
+#### Output:
+Il puntatore al report in cima, `NULL` se lo stack è vuoto.
+
+#### Post-condizioni:
+Il puntatore in cima (`top`) decresce di 1.
+
+Restituisce la proprietà della memoria del report rimosso al chiamante.
+
+---
+
+# 3️⃣ ADT ReportBST
+
+## Tipo:
+```c
+typedef struct ReportBST* ReportBST;
+```
+
+(Opaque Pointer).
+
+---
+
+## Operazioni:
+
+### `void bst_insert(ReportBST t, int id_user, Report r);`
+
+#### Input:
+L'albero `t`, la chiave intera `id_user`, l'oggetto `Report r`.
+
+#### Pre-condizioni:
+`t` valido, `r` valido.
+
+#### Post-condizioni:
+Inserisce un nodo nell'albero rispettando la proprietà del BST:
+
+- i nodi con `id_user` minore vanno a sinistra
+- i maggiori o uguali a destra
+
+---
+
+### `void bst_write_inorder(ReportBST t, FILE* f_out, void (*write_func)(FILE*, Report));`
+
+#### Input:
+L'albero `t`, il puntatore al file aperto `f_out`, una funzione di callback per la formattazione.
+
+#### Post-condizioni:
+Visita l'albero in ordine simmetrico e scrive le righe a lunghezza fissa nel file di testo.
+
+Non modifica la struttura dell'albero.
+
+---
+
+# 4️⃣ ADT PriorityQueue
+
+## Tipo:
+```c
+typedef struct PriorityQueue* PriorityQueue;
+```
+
+(Opaque Pointer).
+
+---
+
+## Operazioni:
+
+### `void pq_enqueue(PriorityQueue pq, Report r);`
+
+#### Input:
+La coda `pq`, il report `r`.
+
+#### Post-condizioni:
+Il report viene inserito nella posizione corretta della lista interna.
+
+La precedenza è data:
+
+1. dall'urgenza maggiore (`3 \rightarrow 2 \rightarrow 1`)
+2. in seconda istanza, dalla stringa temporale della data più vecchia
+
+---
+
+### `Report pq_dequeue(PriorityQueue pq);`
+
+#### Input:
+La coda `pq`.
+
+#### Output:
+Il report in testa alla coda (priorità massima assoluta).
+
+#### Post-condizioni:
+Rimuove il primo nodo e restituisce il report.
 

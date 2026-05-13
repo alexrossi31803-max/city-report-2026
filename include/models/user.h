@@ -3,45 +3,16 @@
 
 #include "../config.h"
 
-/*
-The internal structure is hidden to enforce information hiding.
-*/
 typedef struct User* User;
-//USER OPERATIONS 
-
-/*
-create_user -> It creates a new user 
-Preconditions: 
-- id must be valid (> 0)
-- username and password must not be NULL
-
-Postconditions:
-- returns initialized User structure address
-*/
 
 User create_user(int id, const char* username, const char* password, UserRole role);
+void free_user(User u);
 
-/*
-authenticate_user -> It checks user credentials
+const char* get_role_string(UserRole role);
 
-Preconditions:
-- users array must be valid
-- size must be > 0
-
-Postconditions:
-- returns index of user if found
-- returns -1 if authentication fails
-*/
-int authenticate_user(const char* username, const char* password, User user, int size);
+int get_user_id(User u); 
+const char* get_user_username(User u);
+const char* get_user_password(User u);
+UserRole get_user_role(User u);
 
 #endif
-/*
-STRUCTURE USER -> This ADT represents a system user (Citizen or Employee) 
-and encapsulates authentication data and role management
-*/
-struct User {
-    int id;
-    char username[MAX_USERNAME];
-    char password[MAX_PASSWORD];
-    UserRole role;
-};

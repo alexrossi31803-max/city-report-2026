@@ -10,7 +10,7 @@ used across the entire system.
 This file centralizes configuration to
 ensure consistency and maintainability.
 */
-
+#include <stdbool.h>
 #define MAX_USERNAME 50
 #define MAX_PASSWORD 50
 #define MAX_NAME 50
@@ -44,3 +44,34 @@ typedef enum {
 } ReportCategory;
 
 #endif
+/*
+#ifndef CONFIG_H
+#define CONFIG_H
+
+#define MAX_USERNAME 50
+#define MAX_PASSWORD 50
+#define MAX_NAME 50
+#define MAX_DESC 256
+
+typedef enum {
+    OPEN,
+    IN_PROGRESS,
+    CLOSED
+} ReportStatus;
+
+typedef enum {
+    CITIZEN,
+    EMPLOYEE
+} UserRole;
+
+typedef enum {
+    ROAD,
+    LIGHTING,
+    WASTE,
+    INFRASTRUCTURE,
+    OTHER
+} ReportCategory;
+
+#endif
+
+*/
