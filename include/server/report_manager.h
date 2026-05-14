@@ -12,8 +12,8 @@
 #define PATH_BST_FILE "database/Derived_Files/report_BST_ID_USER.txt"
 #define PATH_PRIORITY_FILE "database/Derived_Files/reports_by_priority.txt"
 
-#define LIMIT_BENCH 50
-#define SOGLIA_SINCRO 50
+/* ESPOSIZIONE GLOBALE DEL CONTATORE DELLA CACHE PER SINCRO INTERFACCIA UTENTE */
+extern int contatore_bench_aggiunte;
 
 // Riversa la Linked List di sessione della RAM del cittadino dentro il reports_bench.txt globale
 bool flush_session_to_bench(ReportList local_list);
@@ -28,7 +28,7 @@ void rebuild_report_bst_file();
 void rebuild_priority_file();
 
 // Aggiorna lo stato di una segnalazione modificando il record d'origine e accodando lo stato nei file _latest
-bool update_report_state_server(int report_id, ReportStatus current_status, ReportStatus new_status);
+bool update_report_state_server(int report_id, ReportStatus new_status);
 
 // Restituisce l'ID progressivo per inserire un nuovo report unico a livello globale
 int generate_global_report_id();

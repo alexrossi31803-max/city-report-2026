@@ -1,63 +1,83 @@
-# ====================================================================
-#  MAKEFILE CENTRALIZZATO - SISTEMA SEGNALAZIONI MUNICIPALI
-# ====================================================================
+# ==============================================================================
+#  MAKEFILE AUTOMATIZZATO PER SISTEMA SEGNALAZIONI MUNICIPALI
+# ==============================================================================
 
-# Compilatore e flag di compilazione
-CC = gcc
-CFLAGS = -Wall -Wextra -pedantic -std=c99 -Iinclude
+# Compilatore e flag di sistema
+CC       := gcc
+CFLAGS   := -Wall -Wextra -std=c99 -Iinclude
 
 # Nome dell'eseguibile finale
-TARGET = segnalazioni_comune
+TARGET   := municipal_system
 
-# Cartelle del progetto
-SRC_DIR = src
-INC_DIR = include
-OBJ_DIR = obj
+# Directory del progetto
+SRC_DIR  := src
+OBJ_DIR  := obj
+BIN_DIR  := .
 
 # Individuazione automatica di tutti i file sorgente .c nelle sottocartelle
-SRCS = $(SRC_DIR)/main.c \
-       $(SRC_DIR)/models/user.c \
-       $(SRC_DIR)/models/report.c \
-       $(SRC_DIR)/adt/report_list.c \
-       $(SRC_DIR)/adt/report_stack.c \
-       $(SRC_DIR)/adt/report_bst.c \
-       $(SRC_DIR)/adt/priority_queue.c \
-       $(SRC_DIR)/utils/validators.c \
-       $(SRC_DIR)/utils/parser.c \
-       $(SRC_DIR)/server/user_manager.c \
-       $(SRC_DIR)/server/report_manager.c \
-       $(SRC_DIR)/tests/test_suite.c
+SRCS     := $(wildcard $(SRC_DIR)/*.c) \
+            $(wildcard $(SRC_DIR)/adt/*.c) \
+            $(wildcard $(SRC_DIR)/models/*.c) \
+            $(wildcard $(SRC_DIR)/server/*.c) \
+            $(wildcard $(SRC_DIR)/tests/*.c) \
+            $(wildcard $(SRC_DIR)/utils/*.c)
 
-# Mappatura dei file sorgente nei rispettivi file oggetto (.o) dentro la cartella obj/
-OBJS = $(patsubst $(SRC_DIR)/%.c, $(OBJ_DIR)/%.o, $(SRCS))
+# Generazione speculare dei file oggetto .o nella cartella obj/
+OBJS     := $(patsubst $(SRC_DIR)/%.c, $(OBJ_DIR)/%.o, $(SRCS))
 
-# Regola principale: compila tutto e genera l'eseguibile
-all: $(TARGET)
-	@echo "===================================================="
-	@echo " [OK] Compilazione completata con successo!"
-	@echo " Per avviare il programma digita: ./$(TARGET)"
-	@echo "===================================================="
+# Rilevamento del sistema operativo per comandi di pulizia nativi (Portabilità)
+ifeq ($(OS),Windows_NT)
+    RM       := del /Q /F
+    FIX_BLDR := if not exist $(subst /,\\,$(dir $@)) mkdir $(subst /,\\,$(dir $@))
+    CLEAN_ALL:= rmdir /S /Q $(OBJ_DIR) 2>NUL
+    EXE_EXT  := .exe
+else
+    RM       := rm -f
+    FIX_BLDR := mkdir -p $(dir $@)
+    CLEAN_ALL:= rm -rf $(OBJ_DIR) $(TARGET)
+    EXE_EXT  :=
+endif
 
-# Regola per il linking dell'eseguibile finale
-$(TARGET): $(OBJS)
-	@echo "--> Generazione eseguibile finale: $(TARGET)"
-	@$(CC) $(CFLAGS) $^ -o $@
+FINAL_TARGET := $(TARGET)$(EXE_EXT)
 
-# Regola generica per compilare i file .c in file .o mantenendo le sottocartelle
+# ------------------------------------------------------------------------------
+# REGOLA PRINCIPALE: Compila ed esegue il linking finale
+# ------------------------------------------------------------------------------
+all: $(FINAL_TARGET)
+
+$(FINAL_TARGET): $(OBJS)
+	@echo [LINKING] Generazione eseguibile finale: $@
+	$(CC) $(CFLAGS) $^ -o $@
+	@echo [OK] Compilazione completata con successo!
+
+# ------------------------------------------------------------------------------
+# COMPILAZIONE MODULARE: Genera i file .o mantenendo l'albero delle cartelle
+# ------------------------------------------------------------------------------
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
-	@# Crea la sottocartella corrispondente dentro obj/ se non esiste
-	@mkdir -p $(dir $@)
-	@echo "--> Compilazione modulo: $<"
-	@$(CC) $(CFLAGS) -c $< -o $@
+	@$(FIX_BLDR)
+	@echo [CC] Compilazione modulo: $<
+	$(CC) $(CFLAGS) -c $< -o $@
 
-# Regola per pulire i file temporanei di compilazione e l'eseguibile
+# ------------------------------------------------------------------------------
+# UTILITY: Regole di pulizia del workspace
+# ------------------------------------------------------------------------------
+.PHONY: clean fclean re
+
 clean:
-	@echo "--> Rimozione file oggetto e pulizia ambiente..."
-	@rm -rf $(OBJ_DIR) $(TARGET)
-	@echo " [OK] Pulizia completata."
+	@echo [CLEAN] Rimozione file oggetto temporanei...
+ifeq ($(OS),Windows_NT)
+	-@rmdir /S /Q $(OBJ_DIR) 2>NUL || exit 0
+else
+	-@rm -rf $(OBJ_DIR)
+endif
 
-# Regola per pulire e ricompilare tutto da zero
-re: clean all
+fclean: clean
+	@echo [FCLEAN] Rimozione eseguibile di sistema...
+ifeq ($(OS),Windows_NT)
+	-@del /Q /F $(FINAL_TARGET) 2>NUL || exit 0
+else
+	-@rm -f $(FINAL_TARGET)
+endif
 
-# Dichiara le regole come fittizie (non associate a file reali)
-.PHONY: all clean re
+# Ricompila l'intero progetto da zero
+re: fclean all

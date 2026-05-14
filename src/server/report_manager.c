@@ -2,234 +2,337 @@
 #include "../../include/utils/parser.h"
 #include "../../include/adt/report_bst.h"
 #include "../../include/adt/priority_queue.h"
+#include "../../include/config.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-static int contatore_modifiche_sincro = 0;
+/* Definizione globale pulita condivisa con main.c */
+int contatore_bench_aggiunte = 0;
 
-int generate_global_report_id() {
-    // Il calcolo legge quante righe totali sono state accumulate sommandole tra i vari canali master
-    int total_id = 1;
-    char line[335];
-    const char* file_paths[] = { PATH_OPEN_LATEST, PATH_PROGRESS_LATEST, PATH_CLOSED_LATEST };
+/**
+ * @brief Trova l'indice del primo slot contrassegnato come vuoto ('V') all'interno di un file master stazionario.
+ * @pre path punta a un file master di stato valido.
+ * @post Ritorna il numero di riga logica del primo buco libero, oppure la fine del file se è saturo.
+ * @note Complessità temporale: O(n) nel caso peggiore di scansione delle sole celle, mitigata dalla sentinella 'E'.
+ */
+static int trova_primo_buco_master(const char* path) {
+    FILE* f = fopen(path, "rb");
+    if (!f) return 0;
     
-    for (int i = 0; i < 3; i++) {
-        FILE* f = fopen(file_paths[i], "r");
-        if (f) {
-            while (fgets(line, sizeof(line), f)) total_id++;
+    char line[REPORT_LINE_TOTAL + 3];
+    int current_row = 0;
+    
+    while (fgets(line, sizeof(line), f)) {
+        if (line[330] == 'V') { // Trovata cella vuota disponibile per il riciclo geometrico
             fclose(f);
+            return current_row;
         }
-    }
-    
-    // Conta anche quanti slot occupati ci sono nel bench transitorio attuale
-    FILE* f_bench = fopen(PATH_BENCH, "r");
-    if (f_bench) {
-        while (fgets(line, sizeof(line), f_bench)) {
-            if (line[0] != ' ' && line[0] != '\n') {
-                // Il flag di stato si trova all'indice 330 (ultimo carattere prima di \n)
-                char state = line[330];
-                if (state == 'A') total_id++;
-            }
+        if (line[330] == 'E') { // Raggiunta la sentinella logica di fine dati stabili
+            fclose(f);
+            return current_row;
         }
-        fclose(f_bench);
+        current_row++;
     }
-    
-    return total_id;
+    fclose(f);
+    return current_row;
 }
+
+/**
+ * @brief Scrive il record speciale sentinella 'E' per sigillare l'indice logico del file di stato.
+ * @pre f descrittore file master aperto in modalità scrittura binarizzata coerente. row riga in cui inserire EOF.
+ * @post Il file conterrà una riga standard da 332 byte con flag 'E' per bloccare le scansioni successive.
+ */
+static void assegna_sentinella_master(FILE* f, int row) {
+    char sentinella[REPORT_LINE_TOTAL + 3];
+    memset(sentinella, ' ', REPORT_LINE_TOTAL - 2);
+    sentinella[330] = 'E'; // Flag Sentinella EOF
+    sentinella[331] = '\n';
+    sentinella[332] = '\0';
+    
+    fseek(f, row * REPORT_LINE_TOTAL, SEEK_SET);
+    fputs(sentinella, f);
+}
+
+int generate_global_report_id(void) {
+    int ultimo_id_emesso = 0;
+    
+    // Apertura in modalità lettura binaria del file di testo sequenziale
+    FILE* f_seq = fopen(PATH_SEQUENCE, "rb");
+    if (f_seq) {
+        char buffer[16] = {0};
+        // Carica la stringa numerica in tempo costante O(1)
+        if (fgets(buffer, sizeof(buffer), f_seq)) {
+            ultimo_id_emesso = atoi(buffer);
+        }
+        fclose(f_seq);
+    } else {
+        // Primo avvio assoluto del sistema comunale: il contatore parte da zero
+        ultimo_id_emesso = 0;
+    }
+    
+    // Incremento atomico rigoroso del contatore per la nuova segnalazione
+    ultimo_id_emesso++;
+    
+    // Riscrittura immediata del nuovo valore sul disco in modalità sovrascrittura binarizzata
+    f_seq = fopen(PATH_SEQUENCE, "wb");
+    if (f_seq) {
+        fprintf(f_seq, "%d\n", ultimo_id_emesso);
+        fclose(f_seq);
+    }
+    
+    return ultimo_id_emesso;
+}
+
 bool flush_session_to_bench(ReportList local_list) {
     if (!local_list) return false;
     
-    FILE* f_bench = fopen(PATH_BENCH, "r+");
+    FILE* f_bench = fopen(PATH_BENCH, "rb+");
     if (!f_bench) return false;
     
-    // Allargato a 335 per ospitare comodamente la riga da 331 caratteri senza troncamenti
-    char line[335]; 
+    char formatted_line[REPORT_LINE_TOTAL + 3];
     list_rewind(local_list);
     Report r = list_next(local_list);
     
-    int current_slot = 0;
-    // Scansiona i 50 slot statici della cache alla ricerca di spazi vuoti
-    while (r && current_slot < LIMIT_BENCH) {
-        fseek(f_bench, current_slot * 331, SEEK_SET);
-        if (!fgets(line, sizeof(line), f_bench)) {
-            // Se il file è finito precocemente, lo slot è considerabile libero
-            line[0] = '\0';
-        }
+    // Scrittura sequenziale simulando un vettore ad avanzamento rigido
+    while (r && contatore_bench_aggiunte < LIMIT_BENCH) {
+        fseek(f_bench, contatore_bench_aggiunte * REPORT_LINE_TOTAL, SEEK_SET);
+        report_to_line(formatted_line, r, 'A');
+        fputs(formatted_line, f_bench);
         
-        // Un blocco è vuoto se inizia con spazio, null, newline o ritorno a capo (\r di Windows)
-        if (line[0] == ' ' || line[0] == '\0' || line[0] == '\n' || line[0] == '\r') {
-            
-            // Si posiziona all'inizio dello slot libero per sovrascriverlo
-            fseek(f_bench, current_slot * 331, SEEK_SET);
-            
-            // Allocazione di 340 byte per impedire lo stack overflow durante la scrittura a riga fissa
-            char formatted_line[335]; 
-            
-            // Forza la formattazione a riga fissa attiva 'A'
-            report_to_line(formatted_line, r, 'A'); 
-            fputs(formatted_line, f_bench);
-            
-            // Avanza alla prossima segnalazione accumulata nella RAM dinamica
-            r = list_next(local_list); 
-        }
-        current_slot++;
+        contatore_bench_aggiunte++; // Avanzamento del cursore di prima cella disponibile
+        r = list_next(local_list);
     }
-    
     fclose(f_bench);
     
-    // Controlla il livello di riempimento complessivo per attivare l'autoflush
-    int occupati = 0;
-    f_bench = fopen(PATH_BENCH, "r");
-    if (f_bench) {
-        while (fgets(line, sizeof(line), f_bench)) {
-            // Conta la riga come occupata solo se contiene dati grafici effettivi
-            if (line[0] != ' ' && line[0] != '\n' && line[0] != '\r' && line[0] != '\0') {
-                occupati++;
-            }
-        }
-        fclose(f_bench);
+    if (contatore_bench_aggiunte >= SOGLIA_FLUSH) {
+        process_and_flush_bench();
     }
-    
-    // Se la cache è satura al 90%, invoca il flushing pesante nei database master
-    if (occupati >= LIMIT_BENCH - 5) {
-        process_and_flush_bench(); 
-    }
-    
     return true;
 }
 
 bool process_and_flush_bench() {
-    FILE* f_bench = fopen(PATH_BENCH, "r+");
+    if (contatore_bench_aggiunte == 0) return true; 
+    
+    FILE* f_bench = fopen(PATH_BENCH, "rb");
     if (!f_bench) return false;
     
-    // Buffer espansi a 335 per accogliere in sicurezza le righe da 331 caratteri
-    char line[335];
-    char clear_line[335];
+    char line[REPORT_LINE_TOTAL + 3];
+    char bst_line[REPORT_LINE_TOTAL + 3];
     
-    // Prepara la riga vuota di reset da 330 spazi + \n + \0 (331 caratteri totali)
-    memset(clear_line, ' ', 330);
-    clear_line[330] = '\n';
-    clear_line[331] = '\0';
-    
-    FILE* f_open = fopen(PATH_OPEN_LATEST, "a");
-    FILE* f_prog = fopen(PATH_PROGRESS_LATEST, "a");
-    FILE* f_clsd = fopen(PATH_CLOSED_LATEST, "a");
-    
-    if (!f_open || !f_prog || !f_clsd) {
-        if (f_open) fclose(f_open);
-        if (f_prog) fclose(f_prog);
-        if (f_clsd) fclose(f_clsd);
-        fclose(f_bench);
-        return false;
-    }
-    
-    for (int i = 0; i < LIMIT_BENCH; i++) {
-        fseek(f_bench, i * 331, SEEK_SET);
+    // Scansione dei record accumulati nella cache
+    for (int i = 0; i < contatore_bench_aggiunte; i++) {
+        fseek(f_bench, i * REPORT_LINE_TOTAL, SEEK_SET);
         if (!fgets(line, sizeof(line), f_bench)) continue;
         
-        // Verifica se lo slot contiene una segnalazione attiva
-        if (line[0] != ' ' && line[0] != '\n' && line[0] != '\r' && line[0] != '\0') {
-            char rec_state; int cit_id;
-            Report r = line_to_report(line, &rec_state, &cit_id);
+        char rec_state; int old_row;
+        Report r = line_to_report(line, &rec_state, &old_row);
+        
+        if (r != NULL && rec_state == 'A') {
+            const char* path_target;
+            if (get_report_status(r) == OPEN) path_target = PATH_OPEN_MASTER;
+            else if (get_report_status(r) == IN_PROGRESS) path_target = PATH_PROGRESS_MASTER;
+            else path_target = PATH_CLOSED_MASTER;
             
-            if (r != NULL && rec_state == 'A') {
-                // Buffer out_line espanso a 335 per supportare la riscrittura fissa
-                char out_line[335];
+            // CANCELLAZIONE CHIRURGICA O(1) COERENTE
+            if (old_row != -1) {
+                /* 
+                   Risoluzione del bug di duplicazione: interroghiamo il BST stazionario su disco 
+                   per estrarre lo STATO ORIGINALE della segnalazione prima della modifica in cache.
+                */
+                ReportStatus vecchio_stato = OPEN; // Default di sicurezza
+                FILE* f_bst_check = fopen(PATH_BST_REPORT_ID, "rb");
+                if (f_bst_check) {
+                    while (fgets(bst_line, sizeof(bst_line), f_bst_check)) {
+                        char check_state; int check_row;
+                        Report tmp_check = line_to_report(bst_line, &check_state, &check_row);
+                        if (tmp_check && get_report_id(tmp_check) == get_report_id(r)) {
+                            vecchio_stato = get_report_status(tmp_check); // Trovato lo stato reale sul disco
+                            free_report(tmp_check);
+                            break;
+                        }
+                        if (tmp_check) free_report(tmp_check);
+                    }
+                    fclose(f_bst_check);
+                }
+
+                // Determina il file master di provenienza corretto al 100%
+                const char* path_old = (vecchio_stato == OPEN) ? PATH_OPEN_MASTER : 
+                                      (vecchio_stato == IN_PROGRESS) ? PATH_PROGRESS_MASTER : PATH_CLOSED_MASTER;
+                
+                FILE* f_old = fopen(path_old, "rb+");
+                if (f_old) {
+                    fseek(f_old, old_row * REPORT_LINE_TOTAL, SEEK_SET);
+                    char raw_clear[REPORT_LINE_TOTAL + 3];
+                    if (fgets(raw_clear, sizeof(raw_clear), f_old)) {
+                        raw_clear[330] = 'V'; // Generazione fisica del buco nel file originale
+                        fseek(f_old, old_row * REPORT_LINE_TOTAL, SEEK_SET);
+                        fputs(raw_clear, f_old);
+                    }
+                    fclose(f_old);
+                }
+            }
+            
+            // INSERIMENTO INTELLIGENTE NEL NUOVO FILE DI STATO
+            int dest_row = trova_primo_buco_master(path_target);
+            FILE* f_master = fopen(path_target, "rb+");
+            if (!f_master) f_master = fopen(path_target, "wb+");
+            
+            if (f_master) {
+                set_report_disk_row(r, dest_row); // Aggiorna l'indirizzo fisso
+                char out_line[REPORT_LINE_TOTAL + 3];
                 report_to_line(out_line, r, 'A');
                 
-                // Smista la riga nel file master corretto
-                if (get_report_status(r) == OPEN) fputs(out_line, f_open);
-                else if (get_report_status(r) == IN_PROGRESS) fputs(out_line, f_prog);
-                else if (get_report_status(r) == CLOSED) fputs(out_line, f_clsd);
+                fseek(f_master, dest_row * REPORT_LINE_TOTAL, SEEK_SET);
+                fputs(out_line, f_master);
                 
-                contatore_modifiche_sincro++;
+                assegna_sentinella_master(f_master, dest_row + 1);
+                fclose(f_master);
             }
-            if (r != NULL) free_report(r); 
-            
-            // Ripristina e pulisce lo slot del bench inserendo la riga di spazi
-            fseek(f_bench, i * 331, SEEK_SET);
-            fputs(clear_line, f_bench);
         }
+        if (r != NULL) free_report(r);
     }
-    
-    fclose(f_open); fclose(f_prog); fclose(f_clsd);
     fclose(f_bench);
     
-    // Controllo della soglia critica per la rigenerazione degli indici pesanti
-    if (contatore_modifiche_sincro >= SOGLIA_SINCRO) {
-        rebuild_report_bst_file();
-        rebuild_priority_file();
-        contatore_modifiche_sincro = 0;
-    }
+    // Reset del cursore circolare della cache
+    contatore_bench_aggiunte = 0; 
     
+    // Rigenerazione finale ordinata In-Order dei due indici storici
+    rebuild_report_bst_file();
     return true;
 }
 
 
-// Funzione interna per caricare un intero file all'interno del BST organizzandolo per ID_USER
-static void load_file_into_bst(ReportBST bst, const char* path) {
-    FILE* f = fopen(path, "r");
+static void load_master_into_report_id_bst(ReportBST bst, const char* path) {
+    FILE* f = fopen(path, "rb");
     if (!f) return;
-    char line[335];
-    while (fgets(line, sizeof(line), f)) {
-        char rec_state; int cit_id;
-        Report r = line_to_report(line, &rec_state, &cit_id);
-        if (rec_state == 'A') {
-            bst_insert(bst, cit_id, r); // Carica il report aggregandolo per ID Cittadino
-        } else {
-            free_report(r);
+    
+    char line[REPORT_LINE_TOTAL + 1];
+    
+    // Scorrimento a blocchi binari fissi da 332 byte continui
+    while (fread(line, sizeof(char), REPORT_LINE_TOTAL, f) == REPORT_LINE_TOTAL) {
+        line[REPORT_LINE_TOTAL] = '\0';
+        
+        // CORREZIONE CRITICA: Ispezione dell'indice array geometrico 330 per bloccare l'I/O
+        if (line[330] == 'E') break;     // Raggiunta la sentinella logica di fine archivio
+        if (line[330] == 'V') continue;  // Salto immediato della cella vuota (Buco riciclato)
+        
+        if (line[0] != ' ' && line[0] != '\n') {
+            char rec_state; int row;
+            Report r = line_to_report(line, &rec_state, &row);
+            if (r != NULL && rec_state == 'A') {
+                bst_insert(bst, get_report_id(r), r); // Caricamento nel Punto di Verità
+            } else if (r != NULL) {
+                free_report(r);
+            }
         }
     }
     fclose(f);
 }
 
 void rebuild_report_bst_file() {
-    ReportBST bst = create_bst();
+    // 1. Rigenerazione dell'indice unico di ricerca dei report per ID (332 byte per riga)
+    ReportBST bst_rep = create_bst();
+    load_master_into_report_id_bst(bst_rep, PATH_OPEN_MASTER);
+    load_master_into_report_id_bst(bst_rep, PATH_PROGRESS_MASTER);
+    load_master_into_report_id_bst(bst_rep, PATH_CLOSED_MASTER);
     
-    // Carica tutti i segmenti storici correnti
-    load_file_into_bst(bst, PATH_OPEN_LATEST);
-    load_file_into_bst(bst, PATH_PROGRESS_LATEST);
-    load_file_into_bst(bst, PATH_CLOSED_LATEST);
-    
-    FILE* f_bst = fopen(PATH_BST_FILE, "w");
-    if (f_bst) {
-        // Scrive la sequenza lineare ordinata applicando il callback in-order dell'ADT
-        bst_write_inorder(bst, f_bst, write_report_callback);
-        fclose(f_bst);
+    FILE* f_bst_rep = fopen(PATH_BST_REPORT_ID, "wb");
+    if (f_bst_rep) {
+        bst_write_inorder(bst_rep, f_bst_rep, write_report_callback);
+        fclose(f_bst_rep);
     }
-    free_bst(bst); // Dealloca l'albero temporaneo in RAM
+    free_bst(bst_rep);
+
+    // 2. Rigenerazione dell'indice ridotto delle corrispondenze utente (12 byte per riga)
+    ReportBST bst_usr = create_bst();
+    const char* paths[] = { PATH_OPEN_MASTER, PATH_PROGRESS_MASTER, PATH_CLOSED_MASTER };
+    char line[REPORT_LINE_TOTAL + 1];
+    
+    for (int i = 0; i < 3; i++) {
+        FILE* f = fopen(paths[i], "rb");
+        if (f) {
+            while (fread(line, sizeof(char), REPORT_LINE_TOTAL, f) == REPORT_LINE_TOTAL) {
+                line[REPORT_LINE_TOTAL] = '\0';
+                
+                // CORREZIONE CRITICA: Ispezione dell'indice array geometrico 330
+                if (line[330] == 'E') break;
+                if (line[330] == 'V') continue;
+                
+                if (line[0] != ' ' && line[0] != '\n') {
+                    char state; int row;
+                    Report r = line_to_report(line, &state, &row);
+                    
+                    if (r != NULL && state == 'A') {
+                        unsigned long hash_user = 5381;
+                        const char* u_ptr = get_report_citizen_name(r);
+                        int c;
+                        while ((c = (unsigned char)*u_ptr++)) {
+                            hash_user = ((hash_user << 5) + hash_user) + c;
+                        }
+                        
+                        // Inserimento ed aggregazione logaritmica nel BST utente
+                        int final_key = (int)(hash_user % 100000);
+                        bst_insert(bst_usr, final_key, r);
+                    } else if (r != NULL) {
+                        free_report(r);
+                    }
+                }
+            }
+            fclose(f);
+        }
+    }
+    FILE* f_bst_usr = fopen(PATH_BST_USER_ID, "wb");
+    if (f_bst_usr) {
+        bst_write_inorder(bst_usr, f_bst_usr, write_user_bst_callback);
+        fclose(f_bst_usr);
+    }
+    free_bst(bst_usr);
 }
 
-// Funzione interna per inserire le righe attive di un file dentro la coda a priorità
-static void load_file_into_pq(PriorityQueue pq, const char* path) {
-    FILE* f = fopen(path, "r");
+/**
+ * @brief Carica un file master stazionario all'interno della coda a priorità operativa del server.
+ *        Risolve il bug di congelamento della coda ispezionando l'indice 330 del buffer.
+ */
+static void load_master_into_pq(PriorityQueue pq, const char* path) {
+    FILE* f = fopen(path, "rb");
     if (!f) return;
-    char line[335];
-    while (fgets(line, sizeof(line), f)) {
-        char rec_state; int cit_id;
-        Report r = line_to_report(line, &rec_state, &cit_id);
-        if (rec_state == 'A' && get_report_status(r) != CLOSED) {
-            pq_enqueue(pq, r); // Inserisce applicando l'algoritmo FIFO incrociato con l'urgenza
-        } else {
-            free_report(r);
+    
+    char line[REPORT_LINE_TOTAL + 1];
+    
+    while (fread(line, sizeof(char), REPORT_LINE_TOTAL, f) == REPORT_LINE_TOTAL) {
+        line[REPORT_LINE_TOTAL] = '\0';
+        
+        // CORREZIONE CRITICA: Ispezione dell'indice array geometrico 330
+        if (line[330] == 'E') break;
+        if (line[330] == 'V') continue;
+        
+        if (line[0] != ' ' && line[0] != '\n') {
+            char state; int row;
+            Report r = line_to_report(line, &state, &row);
+            if (r != NULL && state == 'A') {
+                pq_enqueue(pq, r); // Accumulo condizionato nella coda
+            } else if (r != NULL) {
+                free_report(r);
+            }
         }
     }
     fclose(f);
 }
 
 void rebuild_priority_file() {
+    // Svuotamento forzato preventivo della BENCH imposto per garantire la consistenza totale dei master
+    process_and_flush_bench();
+    
     PriorityQueue pq = create_pq();
+    load_master_into_pq(pq, PATH_OPEN_MASTER);
+    load_master_into_pq(pq, PATH_PROGRESS_MASTER);
     
-    // Considera solo le segnalazioni attive escludendo categoricamente i casi risolti 'CLOSED'
-    load_file_into_pq(pq, PATH_OPEN_LATEST);
-    load_file_into_pq(pq, PATH_PROGRESS_LATEST);
-    
-    FILE* f_pq = fopen(PATH_PRIORITY_FILE, "w");
+    FILE* f_pq = fopen(PATH_PRIORITY_FILE, "wb");
     if (f_pq) {
         while (!pq_is_empty(pq)) {
             Report extracted = pq_dequeue(pq);
-            char out_line[335];
+            char out_line[REPORT_LINE_TOTAL + 1];
             report_to_line(out_line, extracted, 'A');
             fputs(out_line, f_pq);
             free_report(extracted);
@@ -239,171 +342,147 @@ void rebuild_priority_file() {
     free_pq(pq);
 }
 
-/*bool update_report_state_server(int report_id, ReportStatus current_status, ReportStatus new_status) {
-    const char* path_source = (current_status == OPEN) ? PATH_OPEN_LATEST : PATH_PROGRESS_LATEST;
-    const char* path_dest = (new_status == IN_PROGRESS) ? PATH_PROGRESS_LATEST : PATH_CLOSED_LATEST;
-    
-    FILE* f_src = fopen(path_source, "r+");
-    if (!f_src) return false;
-    
-    char line[335]; 
-    bool target_trovato = false;
-    Report r_aggiornato = NULL;
-    int target_citizen_id = 0;
-    int current_row = 0;
-    
-    // Scansione lineare O(n) per riga geometrica fissa (331 caratteri)
-    while (fgets(line, sizeof(line), f_src)) {
-        char rec_state; int cit_id;
-        Report tmp = line_to_report(line, &rec_state, &cit_id);
-        
-        if (tmp != NULL) {
-            if (get_report_id(tmp) == report_id && rec_state == 'A') {
-                target_trovato = true;
-                target_citizen_id = cit_id;
-                
-                // Clona l'oggetto per il file di destinazione prima di effettuare la cancellazione logica
-                r_aggiornato = create_report(get_report_id(tmp), get_report_citizen_name(tmp),
-                                             get_report_category(tmp), get_report_description(tmp),
-                                             get_report_date(tmp), get_report_urgency(tmp));
-                update_report_status(r_aggiornato, new_status);
-                
-                // Sovrascrive il record originale nel file sorgente impostando la cancellazione logica 'X'
-                // Lascia inalterato lo stato logico di partenza (current_status)
-                fseek(f_src, current_row * 331, SEEK_SET);
-                char line_buffer[335];
-                report_to_line(line_buffer, tmp, 'X'); 
-                fputs(line_buffer, f_src);
-                
-                free_report(tmp);
-                break;
-            }
-            free_report(tmp); // Deallocazione sistematica per prevenire memory leak
-        }
-        current_row++;
-    }
-    fclose(f_src);
-    
-    if (!target_trovato) return false;
-    
-    // Scrittura (Append) del nuovo record contrassegnato come attivo 'A' nel file di destinazione
-    FILE* f_dst = fopen(path_dest, "a");
-    if (!f_dst) {
-        free_report(r_aggiornato);
-        return false;
-    }
-    
-    char dest_line[335]; 
-    char fixed_date[11]; 
-    char padded_name[MAX_NAME + 1]; 
-    char padded_desc[MAX_DESC + 1]; 
-    
-    pad_string(padded_name, get_report_citizen_name(r_aggiornato), MAX_NAME);
-    pad_string(padded_desc, get_report_description(r_aggiornato), MAX_DESC);
-    
-    strncpy(fixed_date, get_report_date(r_aggiornato), 10); 
-    fixed_date[10] = '\0';
-    
-    // Geometria di scrittura a 331 caratteri totali sincronizzata con il server
-    snprintf(dest_line, sizeof(dest_line), "%05d%05d%02d%d%d%s%s%s%c\n",
-            get_report_id(r_aggiornato), 
-            target_citizen_id, 
-            (int)get_report_category(r_aggiornato),
-            get_report_urgency(r_aggiornato), 
-            (int)get_report_status(r_aggiornato), 
-            fixed_date, 
-            padded_name, 
-            padded_desc, 
-            'A');
-            
-    fputs(dest_line, f_dst);
-    fclose(f_dst);
-    free_report(r_aggiornato);
-    
-    // Avanzamento e controllo della soglia di sincronizzazione indici
-    contatore_modifiche_sincro++;
-    if (contatore_modifiche_sincro >= SOGLIA_SINCRO) {
-        rebuild_report_bst_file();
-        rebuild_priority_file();
-        contatore_modifiche_sincro = 0;
-    }
-    
-    return true;
-}*/
 
-bool update_report_state_server(int report_id, ReportStatus current_status, ReportStatus new_status) {
-    const char* path_source = (current_status == OPEN) ? PATH_OPEN_LATEST : PATH_PROGRESS_LATEST;
-    const char* path_dest = (new_status == IN_PROGRESS) ? PATH_PROGRESS_LATEST : PATH_CLOSED_LATEST;
+bool update_report_state_server(int report_id, ReportStatus new_status) {
+    FILE* f_bench = fopen(PATH_BENCH, "rb+");
+    if (!f_bench) return false;
     
-    FILE* f_src = fopen(path_source, "r+");
-    if (!f_src) return false;
+    char line[REPORT_LINE_TOTAL + 1];
+    bool trovato_in_bench = false;
+    int current_slot = 0;
     
-    char line[335]; 
-    bool target_trovato = false;
-    Report r_aggiornato = NULL;
-    int target_citizen_id = 0;
-    int current_row = 0;
-    
-    // Scansione lineare O(n) per riga geometrica fissa
-    while (fgets(line, sizeof(line), f_src)) {
-        char rec_state; int cit_id;
-        Report tmp = line_to_report(line, &rec_state, &cit_id);
+    /* Scansione a blocchi binari su tutti i 50 slot potenziali della cache */
+    while (current_slot < LIMIT_BENCH && fread(line, sizeof(char), REPORT_LINE_TOTAL, f_bench) == REPORT_LINE_TOTAL) {
+        line[REPORT_LINE_TOTAL] = '\0';
         
-        if (tmp != NULL) {
-            if (get_report_id(tmp) == report_id && rec_state == 'A') {
-                target_trovato = true;
-                target_citizen_id = cit_id;
-                
-                // Clona l'oggetto per il file di destinazione prima di effettuare la cancellazione logica
-                r_aggiornato = create_report(get_report_id(tmp), get_report_citizen_name(tmp),
-                                             get_report_category(tmp), get_report_description(tmp),
-                                             get_report_date(tmp), get_report_urgency(tmp));
-                update_report_status(r_aggiornato, new_status);
-                
-                // CORREZIONE WINDOWS COMPATIBLE:
-                // Moltiplichiamo per 332 invece di 331. Questo compensa il carattere invisibile '\r'
-                // aggiunto automaticamente da Windows (\r\n), posizionando il cursore al millimetro.
-                fseek(f_src, current_row * 332, SEEK_SET);
-                
-                char line_buffer[335];
-                // Rigenera la riga originale impostando la cancellazione logica 'X' (Spostato)
-                report_to_line(line_buffer, tmp, 'X'); 
-                fputs(line_buffer, f_src);
-                
-                free_report(tmp);
+        char state = line[330];
+        int row;
+        Report tmp = line_to_report(line, &state, &row);
+        
+        if (tmp && get_report_id(tmp) == report_id && state == 'A') {
+            // Aggiornamento dello stato in cache
+            update_report_status(tmp, new_status);
+            
+            char update_line[REPORT_LINE_TOTAL + 1];
+            report_to_line(update_line, tmp, 'A');
+            
+            fseek(f_bench, current_slot * REPORT_LINE_TOTAL, SEEK_SET);
+            fputs(update_line, f_bench);
+            
+            free_report(tmp);
+            trovato_in_bench = true;
+            break;
+        }
+        if (tmp) free_report(tmp);
+        current_slot++;
+    }
+    fclose(f_bench);
+    
+    // Se assente in BENCH, estrae dall'indice unico bst_by_report_id e lo carica in cache
+    if (!trovato_in_bench) {
+        if (contatore_bench_aggiunte >= LIMIT_BENCH) {
+            process_and_flush_bench();
+        }
+
+        FILE* f_bst = fopen(PATH_BST_REPORT_ID, "rb");
+        if (!f_bst) return false;
+        
+        Report target_rep = NULL;
+        while (fread(line, sizeof(char), REPORT_LINE_TOTAL, f_bst) == REPORT_LINE_TOTAL) {
+            line[REPORT_LINE_TOTAL] = '\0';
+            char state = line[330];
+            int row;
+            Report tmp = line_to_report(line, &state, &row);
+            
+            if (tmp && get_report_id(tmp) == report_id) {
+                target_rep = tmp;
                 break;
             }
-            free_report(tmp); // Deallocazione sistematica per prevenire memory leak
+            if (tmp) free_report(tmp);
         }
-        current_row++;
-    }
-    fclose(f_src);
-    
-    if (!target_trovato) return false;
-    
-    // Scrittura (Append) del nuovo record contrassegnato come attivo 'A' nel file di destinazione
-    FILE* f_dst = fopen(path_dest, "a");
-    if (!f_dst) {
-        free_report(r_aggiornato);
-        return false;
-    }
-    
-    char dest_line[335]; 
-    // Usiamo direttamente la nostra report_to_line per scrivere nel file di destinazione,
-    // garantendo che la riga venga formattata con la stessa identica geometria del parser.
-    report_to_line(dest_line, r_aggiornato, 'A');
+        fclose(f_bst);
+        
+        if (!target_rep) return false;
+        
+        update_report_status(target_rep, new_status);
+        
+        f_bench = fopen(PATH_BENCH, "rb+");
+        if (f_bench) {
+            fseek(f_bench, contatore_bench_aggiunte * REPORT_LINE_TOTAL, SEEK_SET);
+            char out_line[REPORT_LINE_TOTAL + 1];
+            report_to_line(out_line, target_rep, 'A');
+            fputs(out_line, f_bench);
+            fclose(f_bench);
             
-    fputs(dest_line, f_dst);
-    fclose(f_dst);
-    free_report(r_aggiornato);
-    
-    // Avanzamento e controllo della soglia di sincronizzazione indici
-    contatore_modifiche_sincro++;
-    if (contatore_modifiche_sincro >= SOGLIA_SINCRO) {
-        rebuild_report_bst_file();
-        rebuild_priority_file();
-        contatore_modifiche_sincro = 0;
+            contatore_bench_aggiunte++; // Avanzamento visibile a tutto l'ecosistema
+        }
+        free_report(target_rep);
     }
     
     return true;
 }
+/*
+bool update_report_state_server(int report_id, ReportStatus new_status) {
+    // Modifica immediata e diretta gestita in cache nella BENCH
+    FILE* f_bench = fopen(PATH_BENCH, "rb+");
+    if (!f_bench) return false;
+    
+    char line[REPORT_LINE_TOTAL + 3];
+    bool trovato_in_bench = false;
+    
+    for (int i = 0; i < contatore_bench_aggiunte; i++) {
+        fseek(f_bench, i * REPORT_LINE_TOTAL, SEEK_SET);
+        if (!fgets(line, sizeof(line), f_bench)) continue;
+        
+        char state; int row;
+        Report tmp = line_to_report(line, &state, &row);
+        if (tmp && get_report_id(tmp) == report_id && state == 'A') {
+            update_report_status(tmp, new_status);
+            char update_line[REPORT_LINE_TOTAL + 3];
+            report_to_line(update_line, tmp, 'A');
+            fseek(f_bench, i * REPORT_LINE_TOTAL, SEEK_SET);
+            fputs(update_line, f_bench);
+            free_report(tmp);
+            trovato_in_bench = true;
+            break;
+        }
+        if (tmp) free_report(tmp);
+    }
+    fclose(f_bench);
+    
+    // Se il record non era in cache, viene estratto dal BST principale e posizionato in BENCH per la modifica
+    if (!trovato_in_bench) {
+        FILE* f_bst = fopen(PATH_BST_REPORT_ID, "rb");
+        if (!f_bst) return false;
+        
+        Report target_rep = NULL;
+        while (fgets(line, sizeof(line), f_bst)) {
+            char state; int row;
+            Report tmp = line_to_report(line, &state, &row);
+            if (tmp && get_report_id(tmp) == report_id) {
+                target_rep = tmp;
+                break;
+            }
+            if (tmp) free_report(tmp);
+        }
+        fclose(f_bst);
+        
+        if (!target_rep) return false;
+        
+        // Cambio di stato applicato sulla copia caricata in BENCH
+        update_report_status(target_rep, new_status);
+        f_bench = fopen(PATH_BENCH, "rb+");
+        if (f_bench) {
+            fseek(f_bench, contatore_bench_aggiunte * REPORT_LINE_TOTAL, SEEK_SET);
+            char out_line[REPORT_LINE_TOTAL + 3];
+            report_to_line(out_line, target_rep, 'A');
+            fputs(out_line, f_bench);
+            fclose(f_bench);
+            
+            // NOTA DI TRACCIA: Caricare un vecchio report storico NON fa incrementare il contatore di aggiunta
+        }
+        free_report(target_rep);
+    }
+    return true;
+}
+*/

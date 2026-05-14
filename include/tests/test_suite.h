@@ -10,6 +10,7 @@ void test_report_registration_and_ram_list();
 void test_revert_stack_logic();
 void test_report_state_update_and_file_transfer();
 void test_priority_queue_sorting();
+void test_report_bst_indexing();
 void test_statistical_report_generation();
 
 #endif

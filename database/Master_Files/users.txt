@@ -1,2 +1,4 @@
-00001Alessandro                                        amnuk_andruk                                      C
-00002Mario                                             Alexander                                         D
+00001u_604_696                                         securePass1                                       C
+00002d_604_600                                         pass                                              C
+00003Alessandro                                        amnuk_andruk                                      C
+00004Mario                                             Alexander                                         D

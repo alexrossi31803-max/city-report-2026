@@ -2,6 +2,7 @@
 #define REPORT_H
 
 #include "../config.h"
+
 typedef struct Report* Report;
 
 Report create_report(int id, const char* name, ReportCategory cat, const char* desc, const char* date, int urgency);
@@ -19,4 +20,9 @@ ReportCategory get_report_category(Report r);
 const char* get_report_description(Report r);
 const char* get_report_date(Report r);
 
+/* Nuovi metodi per l'indirizzamento fisico O(1) */
+int get_report_disk_row(Report r);
+void set_report_disk_row(Report r, int row);
+
 #endif
+

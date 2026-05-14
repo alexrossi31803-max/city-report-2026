@@ -7,9 +7,10 @@ struct Report {
     char citizen_name[MAX_NAME];
     ReportCategory category;
     char description[MAX_DESC];
-    char date[11]; // "GG/MM/AAAA" + '\0'
+    char date[11];
     int urgency;   
     ReportStatus status;
+    int disk_row; // Iniezione indice fisico di riga (-1 alla nascita)
 };
 
 Report create_report(int id, const char* name, ReportCategory cat, const char* desc, const char* date, int urgency) {
@@ -17,8 +18,6 @@ Report create_report(int id, const char* name, ReportCategory cat, const char* d
     if (r == NULL) return NULL;
 
     r->id = id;
-    
-    // Inizializzazione sicura con azzeramento stringhe
     memset(r->citizen_name, 0, MAX_NAME);
     memset(r->description, 0, MAX_DESC);
     memset(r->date, 0, 11);
@@ -30,6 +29,7 @@ Report create_report(int id, const char* name, ReportCategory cat, const char* d
     
     r->urgency = urgency;
     r->status = OPEN; 
+    r->disk_row = -1; // Flag di inizializzazione base di default
 
     return r;
 }
@@ -65,7 +65,6 @@ const char* get_status_string(ReportStatus s) {
     }
 }
 
-// Implementazione dei Getter
 int get_report_id(Report r) { return r->id; }
 ReportStatus get_report_status(Report r) { return r->status; }
 int get_report_urgency(Report r) { return r->urgency; }
@@ -73,3 +72,6 @@ const char* get_report_citizen_name(Report r) { return r->citizen_name; }
 ReportCategory get_report_category(Report r) { return r->category; }
 const char* get_report_description(Report r) { return r->description; }
 const char* get_report_date(Report r) { return r->date; }
+
+int get_report_disk_row(Report r) { return r ? r->disk_row : -1; }
+void set_report_disk_row(Report r, int row) { if (r) r->disk_row = row; }
