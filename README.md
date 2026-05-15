@@ -52,17 +52,34 @@ git clone [https://github.com/alexrossi31803-max/city-report-2026.git](https://g
 cd city-report-2026
 ```
 ---
-###Compilazione:
-È possibile compilare il progetto utilizzando gcc:
+##  5. Compilazione ed Esecuzione
 
-Bash ```
-gcc -o city_report main.c src/**/*.c -I./include
+Il progetto include un `Makefile` configurato per la compilazione modulare separata tramite `gcc`.
+
+### Compilazione Rapida tramite Makefile
+```bash
+make
 ```
----
-###Esecuzione:
 
-Bash```
+### Compilazione Manuale tramite GCC
+```bash
+gcc -Wall -Wextra -pedantic -std=c99 -Iinclude main.c src/models/user.c src/models/report.c src/adt/report_list.c src/adt/report_stack.c src/adt/report_avl.c src/adt/priority_queue.c src/utils/validators.c src/utils/parser.c src/server/user_manager.c src/server/report_manager.c src/tests/test_suite.c -o city_report.exe
+```
+
+### Avvio dell'Applicazione
+Linux/macOS:
+```bash
 ./city_report
+```
+
+Windows:
+```bash
+city_report.exe
+```
+
+### Pulizia dei File Oggetto (.o)
+```bash
+make clean
 ```
 ---
 ## Documentazione Approfondita
