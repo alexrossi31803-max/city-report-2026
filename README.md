@@ -1,58 +1,81 @@
-#  Sistema di Gestione delle Segnalazioni Municipali (PSD)
+# City Report 2026 - Sistema di Gestione Segnalazioni Urbane
 
-[![C Language](https://shields.io)](https://gnu.org)
-[![Platform](https://shields.io)](https://github.com)
-
-Un'applicazione avanzata in **C99** progettata per la gestione delle segnalazioni di problemi urbani inviate dai cittadini al Comune. Il sistema implementa il principio dell'**Information Hiding** tramite *Opaque Pointers* e simula un database relazionale ad alte prestazioni su file flat binarizzati, garantendo ricerche logaritmiche ed inserimenti intelligenti con riciclo dei buchi in tempo costante.
+City Report 2026 è un sistema gestionale sviluppato in **C** per la gestione delle segnalazioni cittadine. Il software permette ai cittadini di inviare segnalazioni e ai dipendenti comunali di gestirle in base a criteri di urgenza e cronologia, garantendo persistenza dei dati e performance ottimali tramite indici AVL.
 
 ---
 
-##  1. Architettura di Memoria a Tre Livelli e Gestione del Disco
+##  Funzionalità Principali
 
-Il ciclo di vita di una segnalazione attraversa tre stadi hardware per azzerare i colli di bottiglia causati dalle operazioni di I/O:
+###  Area Cittadino
+* **Registrazione e Login**: Accesso sicuro al sistema.
+* **Invio Segnalazioni**: Creazione di segnalazioni con categoria, descrizione e livello di urgenza.
+* **Undo System**: Possibilità di annullare le ultime azioni eseguite durante la sessione corrente tramite logica Stack (LIFO).
+* **Session Persistence**: I dati vengono salvati permanentemente solo al momento del logout.
 
-1. **Sessione Volatile (RAM):** Accumulo delle segnalazioni in testa a una Linked List in tempo costante \(O(1)\). Modifiche isolate tramite uno Stack statico LIFO per consentire operazioni di Undo/Revert profonde. I report nascono con indice riga fisso impostato a `-1`.
-2. **Cache Vettoriale Statica (BENCH):** Al logout, i dati passano nel file a blocchi fissi `reports_bench.txt` (50 slot da **332 byte**). Un contatore traccia la prima riga disponibile. Al riempimento, il contatore si azzera (`counter = 0`), rendendo le celle disponibili ad essere sovrascritte come in un buffer circolare ad alta velocità.
-3. **Database Centralizzato con Inserimento Intelligente (Master Files):** Al flush dei 50 elementi della cache, i record storici modificati vengono eliminati dal vecchio file di stato in **\(O(1)\)** eseguendo un salto `fseek` immediato sulla riga indicata dal report e settando il flag speciale su `'V'` (Vuoto/Buco). Il record aggiornato viene scritto nel nuovo file di stato occupando il primo buco noto per quel file e risigillando la sentinella di fine dati logici `'E'`. Il nuovo numero di riga fisica viene iniettato nel report, garantendo la consistenza assoluta.
-
----
-
-##  2. Strutture Dati Astratte (ADT) e Sincronizzazione Indici
-
-Al termine del flush pesante della BENCH, il server rigenera da zero i file d'indice estratti in modalità ordinata *In-Order*:
-
-* **`report_BST_BY_REPORT_ID.txt` [O(log n)]:** Albero organizzato secondo la chiave `report_id`. È il vero Punto di Verità dello stato dei dati. Il dipendente vi effettua ricerche e modifiche istantanee in tempo logaritmico.
-* **`report_BST_BY_USER_ID.txt` [O(log n)]:** Albero organizzato secondo la chiave `user_id`. I nodi contengono esclusivamente l'ID utente e l'array dei codici report a lui associati. Il cittadino estrae logaritmicamente i propri codici storici e li risolve sul BST dell'ID report, visualizzando lo storico con lo stato della pratica sempre perfettamente sincronizzato in tempo reale.
-* **`reports_by_priority.txt` [O(1)]:** Coda a priorità ad ordinamento incrociato (Urgenza decrescente + Data FIFO più vecchia). Trattandosi di un'operazione costosa, viene compilata **solo sotto esplicita richiesta del dipendente**, eseguendo un flush forzato preventivo della cache e scansionando i soli file master attivi.
+###  Area Dipendente
+* **Dashboard Prioritaria**: Visualizzazione delle segnalazioni pendenti ordinate per **Urgenza** (Alta > Media > Bassa) e, a parità di urgenza, per **Data di invio** (FIFO).
+* **Gestione Stati**: Avanzamento delle segnalazioni da "Aperta" a "In Lavorazione" fino a "Chiusa".
+* **Ricerca Rapida**: Accesso istantaneo ai report tramite ID grazie all'indicizzazione AVL.
 
 ---
 
-##  5. Compilazione ed Esecuzione
+##  Architettura Tecnica
+Il progetto implementa concetti avanzati di strutture dati e gestione del file system:
+* **Persistenza a 351 Byte**: Record a lunghezza fissa per accesso casuale $O(1)$ tramite `fseek`.
+* **Indici AVL**: Ricerca in tempo logaritmico $O(\log n)$ degli ID e degli utenti.
+* **Gestione dei Buchi**: Recupero dello spazio dei record cancellati tramite file `null_pointer.txt`.
+* **Layered Design**: Separazione netta tra Modelli, ADT, Utility e Logica Server.
 
-Il progetto include un `Makefile` configurato per la compilazione modulare separata tramite `gcc`.
+---
 
-### Compilazione Rapida tramite Makefile
-```bash
-make
+##  Struttura del Progetto
+```text
+.
+├── include/           # Header files (.h)
+│   ├── adt/           # Strutture dati (AVL, PQ, List, Stack)
+│   ├── models/        # Modelli dati (Report, User)
+│   ├── server/        # Logica di gestione (ReportManager, UserManager)
+│   └── utils/         # Validatori e Parser
+├── src/               # Sorgenti (.c)
+├── database/          # File di persistenza (.txt)
+│   ├── Master_Files/  # Database principali (Open, InProgress, Closed)
+│   └── Derived_Files/ # Indici, Bench e File dei buchi
+├── tests/             # Suite di test unitari
+├── docs/              # Documentazione tecnica (Analysis, Architecture, ADT)
+└── main.c             # Entry point del programma
 ```
+## Installazione e Compilazione
+###Clona la repository:
 
-### Compilazione Manuale tramite GCC
-```bash
-gcc -Wall -Wextra -pedantic -std=c99 -Iinclude src/main.c src/models/user.c src/models/report.c src/adt/report_list.c src/adt/report_stack.c src/adt/report_bst.c src/adt/priority_queue.c src/utils/validators.c src/utils/parser.c src/server/user_manager.c src/server/report_manager.c src/tests/test_suite.c -o segnalazioni_municipali.exe
+Bash ```
+git clone [https://github.com/alexrossi31803-max/city-report-2026.git](https://github.com/alexrossi31803-max/city-report-2026.git)
+cd city-report-2026
 ```
+---
+###Compilazione:
+È possibile compilare il progetto utilizzando gcc:
 
-### Avvio dell'Applicazione
-Linux/macOS:
-```bash
-./segnalazioni_municipali.exe
+Bash ```
+gcc -o city_report main.c src/**/*.c -I./include
 ```
+---
+###Esecuzione:
 
-Windows:
-```bash
-segnalazioni_municipali.exe
+Bash```
+./city_report
 ```
+---
+## Documentazione Approfondita
+Per maggiori dettagli tecnici, consulta la cartella docs/:
 
-### Pulizia dei File Oggetto (.o)
-```bash
-make clean
-```
+* Analisi Tecnica
+
+* Architettura del Sistema
+
+* Panoramica ADT
+
+---
+## Autore
+* **Alessandro Rossi** - Sviluppo e Progettazione
+
+* **Anno Accademico**: 2025/2026

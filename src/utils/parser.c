@@ -4,6 +4,8 @@
 #include <ctype.h>
 #include <stdlib.h>
 
+/* --- Utility di formattazione --- */
+
 void pad_string(char* dest, const char* src, int fixed_length) {
     int src_len = src ? (int)strlen(src) : 0;
     int copy_len = (src_len > fixed_length) ? fixed_length : src_len;
@@ -11,6 +13,7 @@ void pad_string(char* dest, const char* src, int fixed_length) {
     if (copy_len > 0) {
         memcpy(dest, src, copy_len);
     }
+    // Riempimento con spazi per mantenere la geometria fissa
     for (int i = copy_len; i < fixed_length; i++) {
         dest[i] = ' ';
     }
@@ -25,144 +28,95 @@ void trim_string(char* str) {
     }
 }
 
-void user_to_line(char* line_buffer, int id, const char* user, const char* pass, UserRole role) {
-    char padded_user[MAX_USERNAME + 1];
-    char padded_pass[MAX_PASSWORD + 1];
+/* --- Logica per l'Utente (107 byte) --- */
+
+void user_to_line(char* line_buffer, unsigned int id, const char* user, const char* pass, UserRole role) {
+    char p_user[MAX_USERNAME + 1];
+    char p_pass[MAX_PASSWORD + 1];
     
-    pad_string(padded_user, user, MAX_USERNAME);
-    pad_string(padded_pass, pass, MAX_PASSWORD);
-    
-    char role_char = (role == EMPLOYEE) ? 'D' : 'C';
-    sprintf(line_buffer, "%05d%s%s%c\n", id, padded_user, padded_pass, role_char);
+    pad_string(p_user, user, MAX_USERNAME);
+    pad_string(p_pass, pass, MAX_PASSWORD);
+
+    // Formato: ID(10) + USER(50) + PASS(50) + ROLE(1) + \n = 112... 
+    // Rettifica per aderire ai 107 byte definiti: ID(5) + USER(50) + PASS(50) + ROLE(1) + \n
+    sprintf(line_buffer, "%05u%-50s%-50s%c\n", id, p_user, p_pass, (char)role);
 }
 
-void line_to_user_data(const char* line_buffer, int* id, char* user, char* pass, UserRole* role) {
-    char raw_id[6] = {0};
-    memcpy(raw_id, line_buffer, 5);
-    *id = atoi(raw_id);
+void line_to_user_data(const char* line_buffer, unsigned int* id, char* user, char* pass, UserRole* role) {
+    char temp_id[6] = {0};
     
+    memcpy(temp_id, line_buffer, 5);
+    *id = (unsigned int)atoi(temp_id);
+
     memcpy(user, line_buffer + 5, MAX_USERNAME);
     user[MAX_USERNAME] = '\0';
     trim_string(user);
-    
-    memcpy(pass, line_buffer + 5 + MAX_USERNAME, MAX_PASSWORD);
+
+    memcpy(pass, line_buffer + 55, MAX_PASSWORD);
     pass[MAX_PASSWORD] = '\0';
     trim_string(pass);
-    
-    char raw_role = line_buffer[5 + MAX_USERNAME + MAX_PASSWORD];
-    *role = (raw_role == 'D') ? EMPLOYEE : CITIZEN;
+
+    *role = (UserRole)line_buffer[105];
 }
-void report_to_line(char* line_buffer, Report r, char record_state) {
-    // 1. Inizializzazione totale del buffer a caratteri di spazio per garantire un padding pulito
-    memset(line_buffer, ' ', REPORT_LINE_TOTAL - 2);
+
+/* --- Logica per il Report (351 byte) --- */
+
+void report_to_line(char* line_buffer, Report r, char cell_status) {
+    char p_name[MAX_NAME];
+    char p_desc[MAX_DESC];
     
-    // 2. Formattazione temporanea dei campi dati
-    char temp_data[REPORT_LINE_TOTAL + 5];
-    sprintf(temp_data, "%05d%05d%02d%d%d%-10.10s%-50.50s%-256.256s",
+    pad_string(p_name, get_report_citizen_name(r), MAX_NAME - 1);
+    pad_string(p_desc, get_report_description(r), MAX_DESC - 1);
+
+    /* Geometria 351 byte:
+     * ID(10)+UID(10)+NAME(50)+CAT(1)+DESC(256)+DATE(11)+URG(1)+STAT(1)+ROW(10)+CELL(1)+\n
+     */
+    sprintf(line_buffer, "%010u%010u%-50s%c%-256s%-11s%c%c%010d%c\n",
             get_report_id(r),
-            get_report_disk_row(r),
-            (int)get_report_category(r),
-            get_report_urgency(r),
-            (int)get_report_status(r),
+            get_report_user_id(r),
+            p_name,
+            (char)get_report_category(r),
+            p_desc,
             get_report_date(r),
-            get_report_citizen_name(r),
-            get_report_description(r));
-
-    // 3. Sanificazione totale di ogni possibile carattere di a capo inserito dall'input utente
-    for (int i = 0; i < 330; i++) {
-        if (temp_data[i] == '\n' || temp_data[i] == '\r' || temp_data[i] == '\0') {
-            temp_data[i] = ' '; 
-        }
-    }   
-    
-    // 4. Copia dei 330 byte di testo sanificato nel buffer finale di riga
-    memcpy(line_buffer, temp_data, 330);
-    
-    // 5. Posizionamento geometrico millimetrico dei caratteri di controllo di fine riga
-    line_buffer[330] = record_state; // Il flag va esattamente al byte 330 (es. 'A')
-    line_buffer[331] = '\n';         // Il newline va esattamente al byte 331
-    line_buffer[332] = '\0';         // Chiusura stringa RAM
+            get_report_urgency(r),
+            (char)get_report_status(r),
+            get_report_disk_row(r),
+            cell_status);
 }
 
+Report line_to_report(const char* line_buffer, char* cell_status_out, int* row_out) {
+    char id_s[11] = {0}, uid_s[11] = {0}, name[51] = {0}, cat_c, desc[257] = {0}, 
+         date[12] = {0}, urg_c, stat_c, row_s[11] = {0};
 
-Report line_to_report(const char* line_buffer, char* record_state, int* disk_row_out) {
-    char raw_rep_id[6] = {0};
-    char raw_disk_row[6] = {0};
-    char raw_cat[3] = {0};
-    
-    memcpy(raw_rep_id, line_buffer, 5);
-    int rep_id = atoi(raw_rep_id);
-    
-    memcpy(raw_disk_row, line_buffer + 5, 5);
-    int disk_row = atoi(raw_disk_row);
-    if (disk_row_out) *disk_row_out = disk_row;
-    
-    memcpy(raw_cat, line_buffer + 10, 2);
-    ReportCategory cat = (ReportCategory)atoi(raw_cat);
-    
-    int urgency = line_buffer[12] - '0';
-    ReportStatus status_pratica = (ReportStatus)(line_buffer[13] - '0');
-    
-    char raw_date[11] = {0};
-    memcpy(raw_date, line_buffer + 14, 10);
-    trim_string(raw_date);
-    
-    char raw_name[MAX_NAME + 1] = {0};
-    memcpy(raw_name, line_buffer + 24, MAX_NAME);
-    trim_string(raw_name);   
+    // Estrazione millimetrica tramite offset fissi
+    memcpy(id_s,   line_buffer, 10);
+    memcpy(uid_s,  line_buffer + 10, 10);
+    memcpy(name,   line_buffer + 20, 50);
+    cat_c =        line_buffer[70];
+    memcpy(desc,   line_buffer + 71, 256);
+    memcpy(date,   line_buffer + 327, 11);
+    urg_c =        line_buffer[338];
+    stat_c =       line_buffer[339];
+    memcpy(row_s,  line_buffer + 340, 10);
+    *cell_status_out = line_buffer[350];
 
-    char raw_desc[MAX_DESC + 1] = {0};
-    memcpy(raw_desc, line_buffer + 24 + MAX_NAME, MAX_DESC);
-    trim_string(raw_desc);    
-    
-    *record_state = line_buffer[330]; // Estrazione del flag di cella logico    
-    
-    Report r = create_report(rep_id, raw_name, cat, raw_desc, raw_date, urgency);
-    if (r != NULL) {
-        update_report_status(r, status_pratica);
-        set_report_disk_row(r, disk_row);
-    }
+    if (*cell_status_out == 'V' || *cell_status_out == 'E') return NULL;
+
+    trim_string(name);
+    trim_string(desc);
+    trim_string(date);
+    *row_out = atoi(row_s);
+
+    Report r = create_report(atoi(id_s), atoi(uid_s), name, (ReportCategory)cat_c, 
+                             desc, date, urg_c, (ReportStatus)stat_c);
+    set_report_disk_row(r, *row_out);
     
     return r;
 }
 
-void write_report_callback(FILE* f_out, Report r) {
-    char line[REPORT_LINE_TOTAL + 3];
-    report_to_line(line, r, 'A');
-    fputs(line, f_out);
-}
+/* --- Logica per Indici AVL --- */
 
-// Scrive una riga d'indice ridotta da 12 byte: 5 cifre ID Utente + 5 cifre ID Report + \n + \0
-void user_index_to_line(char* line_buffer, int id_user, int id_report) {
-    sprintf(line_buffer, "%05d%05d\n", id_user, id_report);
-}
-
-// Legge la riga d'indice ridotta estraendo le chiavi numeriche
-void line_to_user_index(const char* line_buffer, int* id_user_out, int* id_report_out) {
-    char raw_user[6] = {0};
-    char raw_report[6] = {0};
-    
-    // Estrazione millimetrica dei soli caratteri numerici
-    memcpy(raw_user, line_buffer, 5);
-    memcpy(raw_report, line_buffer + 5, 5);
-    
-    if (id_user_out) *id_user_out = atoi(raw_user);
-    if (id_report_out) *id_report_out = atoi(raw_report);
-}
-
-
-// Callback speciale per il BST Utente che scrive solo le coppie di ID a 12 byte
-void write_user_bst_callback(FILE* f_out, Report r) {
-    char line[14];
-    // Recuperiamo l'ID del report
-    int rep_id = get_report_id(r);
-    // Calcoliamo l'ID numerico dell'utente convertendo l'username stocastico
-    unsigned long hash_user = 5381;
-    const char* u_ptr = get_report_citizen_name(r);
-    int c;
-    while ((c = (unsigned char)*u_ptr++)) hash_user = ((hash_user << 5) + hash_user) + c;
-    int user_id = (int)(hash_user % 100000); // Confinato in 5 cifre geometriche
-    
-    user_index_to_line(line, user_id, rep_id);
-    fputs(line, f_out);
+void avl_to_line(char* line_buffer, unsigned int key, int value) {
+    // Formato fisso 22 byte: [10 cifre][10 cifre]\n\0
+    sprintf(line_buffer, "%010u%010d\n", key, value);
 }

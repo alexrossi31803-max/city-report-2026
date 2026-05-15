@@ -1,127 +1,58 @@
-#  Specifica Formale degli ADT e Operazioni Semantiche
+# Panoramica delle Strutture Dati (ADT) - City Report 2026
 
-Questo documento definisce la specifica sintattica e semantica completa di ciascuna operazione fornita dagli ADT creati, nel rispetto del principio dell'Information Hiding e dell'incapsulamento dei tipi.
-
----
-
-##  ADT ReportList
-
-## Tipo:
-```c
-typedef struct ReportList* ReportList;
-```
-
-(Opaque Pointer).
+Il successo del sistema City Report si basa sull'integrazione di diverse strutture dati astratte, ognuna scelta per ottimizzare un aspetto specifico del workflow: gestione della memoria, velocità di ricerca o ordinamento delle priorità.
 
 ---
 
-### Operazioni Formali:
+## 1. Report AVL Tree (Indice ad Alte Prestazioni)
+L'AVL è il "motore di ricerca" del sistema. Essendo un albero binario di ricerca bilanciato, garantisce che l'altezza dell'albero sia sempre proporzionale a $\log n$.
 
-#### `ReportList create_list();`
-* **Input:** Nessuno.
-* **Output:** Un’istanza valida di tipo `ReportList`.
-* **Pre-condizioni:** Memoria di sistema disponibile per l'allocazione.
-* **Post-condizioni:** Restituisce un puntatore a una struttura lista inizializzata con dimensione pari a `0` e puntatori di testa impostati a `NULL`.
+* **Scopo**: Mappare l'ID univoco di una segnalazione alla sua posizione fisica (riga) nel file master sul disco.
+* **Perché AVL?**: Rispetto a un albero binario semplice, l'AVL evita che l'albero diventi una lista (degenerazione) in caso di inserimenti di ID sequenziali, mantenendo le ricerche istantanee.
+* **Complessità**: 
+    * Ricerca: $O(\log n)$
+    * Inserimento: $O(\log n)$
 
-#### `void free_list(ReportList l);`
-* **Input:** La lista `l` da deallocare.
-* **Pre-condizioni:** `l` inizializzato non NULL.
-* **Post-condizioni:** Tutta la memoria associata ai nodi della lista e alle singole istanze di `Report` contenute viene interamente liberata in RAM.
+## 2. Priority Queue (Dashboard Dipendente)
+La Priority Queue gestisce l'ordine con cui i dipendenti devono processare le segnalazioni.
 
-#### `void list_insert(ReportList l, Report r);`
-* **Input:** La lista `l`, il puntatore all'oggetto `Report r`.
-* **Pre-condizioni:** `l` non deve essere `NULL`, `r` deve essere un'istanza di report valida e non nulla.
-* **Post-condizioni:** `r` viene inserito in testa alla lista come nuovo nodo in tempo costatante \(O(1)\). La dimensione della lista aumenta di `1`.
+* **Scopo**: Estrarre sempre la segnalazione con la massima urgenza e, a parità di urgenza, quella arrivata per prima (FIFO).
+* **Criterio di Ordinamento**: 
+    1.  **Urgenza**: Valore numerico (3 > 2 > 1).
+    2.  **Data**: Confronto tra stringhe in formato "AAAA/MM/GG" (normalizzato per il confronto).
+* **Implementazione**: Lista concatenata ordinata per garantire un'estrazione $O(1)$ della segnalazione più urgente.
 
-#### `bool list_remove(ReportList l, int report_id);`
-* **Input:** La lista `l`, l'ID numerico del report da eliminare.
-* **Output:** Valore booleano (`true` se rimosso, `false` altrimenti).
-* **Pre-condizioni:** `l` inizializzato e non vuoto.
-* **Post-condizioni:** Se l'ID corrisponde a un report in lista, il nodo viene rimosso modificando i puntatori adiacenti, la memoria del report viene liberata, la dimensione decresce di `1` e ritorna `true`. Se non trovato, ritorna `false`.
+## 3. Report Stack (Gestione Undo)
+Lo stack implementa la logica LIFO (Last-In, First-Out) per la sessione utente.
 
-#### `Report list_find(ReportList l, int report_id);`
-* **Input:** La lista `l`, l'ID del report da cercare.
-* **Output:** Il puntatore all'oggetto `Report` trovato, oppure `NULL`.
-* **Pre-condizioni:** `l` inizializzato.
-* **Post-condizioni:** Scansiona la lista. Se trova un report con ID corrispondente, ne restituisce il puntatore senza rimuoverlo o modificarlo. Altrimenti ritorna `NULL`.
+* **Scopo**: Memorizzare temporaneamente i riferimenti ai report creati o modificati durante la sessione corrente.
+* **Funzionalità**: Se l'utente clicca su "Undo", l'ultimo report viene estratto dallo stack e rimosso dalla lista di sessione prima che avvenga il commit sul disco.
+* **Complessità**: $O(1)$ per Push e Pop.
 
----
+## 4. Report List (Session Buffer)
+Una classica lista concatenata semplice che funge da memoria volatile.
 
-##  ADT ReportStack
-
-## Tipo:
-```c
-typedef struct ReportStack* ReportStack;
-```
-
-(Opaque Pointer).
+* **Scopo**: Contenere tutti i report gestiti durante la sessione corrente prima del logout.
+* **Interazione**: Al momento del logout (Flush), la lista viene iterata interamente per trasferire i dati nel file `reports_bench.txt`.
+* **Vantaggio**: Permette di gestire un numero arbitrario di segnalazioni in RAM senza allocare staticamente grandi array.
 
 ---
 
-### Operazioni Formali:
+## Tabella Comparativa delle Complessità
 
-#### `bool stack_push(ReportStack s, Report r);`
-* **Input:** Lo stack `s`, il report corrente `r` da salvare.
-* **Output:** `true` se l'operazione riesce, `false` se lo stack è saturo.
-* **Pre-condizioni:** `s` e `r` validi e non nulli. L'indice di cima `top` deve essere minore di `MAX_STACK - 1` (10).
-* **Post-condizioni:** Effettua una clonazione profonda (deep copy) allocando un nuovo oggetto `Report` e copiando tutti i campi di `r`. Incrementa `top` di `1` e inserisce la copia in cima allo stack. Ritorna `true`.
-
-#### `Report stack_pop(ReportStack s);`
-* **Input:** Lo stack `s`.
-* **Output:** Il puntatore al `Report` rimosso dalla cima, oppure `NULL` se vuoto.
-* **Pre-condizioni:** `s` non vuoto (`top >= 0`).
-* **Post-condizioni:** Estrae il report posizionato all'indice `top`, decrementa il contatore di cima di `1` e trasferisce la proprietà della memoria del report di backup clonato al chiamante.
+| ADT | Operazione Principale | Complessità (Average) | Complessità (Worst) |
+| :--- | :--- | :--- | :--- |
+| **AVL Tree** | Ricerca ID | $O(\log n)$ | $O(\log n)$ |
+| **Priority Queue** | Estrazione Priorità | $O(1)$ | $O(1)$ |
+| **Stack** | Undo (Pop) | $O(1)$ | $O(1)$ |
+| **Linked List** | Inserimento | $O(1)$ | $O(1)$ |
 
 ---
 
-##  ADT ReportBST
-
-## Tipo:
-```c
-typedef struct ReportBST* ReportBST;
-```
-
-(Opaque Pointer).
-
----
-
-### Operazioni Formali:
-
-#### `void bst_insert(ReportBST t, int chiave, Report r);`
-* **Input:** L'albero `t`, la chiave intera (`report_id` o `hash_user`), l'oggetto `Report r`.
-* **Pre-condizioni:** `t` valido, `r` valido.
-* **Post-condizioni:** Inserisce un nuovo nodo nell'albero rispettando la proprietà dei BST: i nodi con chiave minore vanno a sinistra, i maggiori o uguali a destra, garantendo una ricerca in tempo logaritmico **\(O(\log n)\)**.
-
-#### `void bst_write_inorder(ReportBST t, FILE* f_out, void (*write_func)(FILE*, Report));`
-* **Input:** L'albero `t`, il file aperto `f_out`, la funzione callback di formattazione `write_func`.
-* **Pre-condizioni:** `t` inizializzato, `f_out` aperto in scrittura binarizzata, `write_func` non nulla.
-* **Post-condizioni:** Attraversa l'albero tramite una visita in ordine simmetrico (In-Order: Sinistra $\rightarrow$ Radice $\rightarrow$ Destra) e scrive sul file un elenco serializzato matematicamente in ordine crescente per chiave.
-
----
-
-##  ADT PriorityQueue
-
-## Tipo:
-```c
-typedef struct PriorityQueue* PriorityQueue;
-```
-
-(Opaque Pointer).
-
----
-
-### Operazioni Formali:
-
-#### `void pq_enqueue(PriorityQueue pq, Report r);`
-* **Input:** La coda `pq`, l'oggetto `Report r` da inserire.
-* **Pre-condizioni:** `pq` e `r` validi e non nulli.
-* **Post-condizioni:** Alloca un nodo per la coda e lo inserisce nella lista interna mantenendola ordinata. La precedenza viene calcolata tramite ordinamento incrociato stocastico: priorità assoluta al livello di urgenza decrescente (3 -> 2 -> 1) e, a parità di urgenza, viene applicato il criterio FIFO confrontando la stringa della data d'inserimento più vecchia.
-
-#### `Report pq_dequeue(PriorityQueue pq);`
-* **Input:** La coda `pq`.
-* **Output:** Il puntatore al `Report` a massima priorità estratto, oppure `NULL`.
-* **Pre-condizioni:** `pq` inizializzata e non vuota.
-* **Post-condizioni:** Rimuove il primo nodo in testa alla lista interna (che rappresenta la priorità massima assoluta), dealloca il nodo di giunzione e restituisce la proprietà del report rimosso al chiamante in tempo costante \(O(1)\).
-
+## Implementazione e Information Hiding
+Tutte le strutture seguono il principio dell'**incapsulamento**:
+1.  I file `.h` espongono solo il tipo `typedef struct NomeADT* NomeADT`.
+2.  I dettagli implementativi (nodi, puntatori `next`, `left`, `right`) sono nascosti nei file `.c`.
+3.  Questo permette di cambiare l'implementazione interna (es. passare da una Lista Ordinata a un Heap per la Priority Queue) senza dover modificare il resto del sistema.
 
 

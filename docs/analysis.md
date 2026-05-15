@@ -1,45 +1,61 @@
-#  Analisi Ingegneristica e Scelte Algoritmiche Finali
+# Analisi Tecnica del Sistema "City Report 2026"
 
-Questo documento descrive il razionale algoritmico e le complessità computazionali delle strutture dati, dimostrando la conformità ai requisiti stringenti della traccia d'esame.
+## 1. Architettura del Sistema
+Il sistema adotta un'architettura **stratificata** per separare la logica di presentazione (UI), la logica di business (Server/Managers) e la persistenza (Filesystem). 
 
----
-
-## 1. Gestione Utenti ed Autenticazione: Tabella Hash Geometrica su File
-* **Requisito:** Login e registrazione istantanei con blocco dei duplicati in tempo costante.
-* **Scelta Algoritmica:** Tabella Hash ad indirizzamento aperto (Linear Probing) su file indice binarizzato (`users_idx.txt`) accoppiata a un file dati ad anagrafica fissa (`users.txt`).
-* **Complessità Computazionale:** Caso medio **\(O(1)\)**.
-* **Razionale d'Uso:** L'username viene convertito in un intero tramite l'algoritmo **DJB2** per calcolare l'indice slot (`hash % capacità`). Il server esegue un salto `fseek` immediato nel file indice e, estratto il puntatore alla riga, effettua un secondo salto geometrico speculare sul file dei dati sfruttando la lunghezza rigida della riga (**107 byte**). Viene eliminata qualsiasi scansione sequenziale lineare, garantendo l'accesso e l'intercettazione dei duplicati in tempo costante.
-
----
-
-## 2. Sessione Locale e Annullamento Azioni: Linked List + Stack Statico LIFO
-* **Requisito:** Accumulo volatile delle segnalazioni del cittadino e meccanismo di Undo/Revert.
-* **Scelta Algoritmica:** Lista Concatenata Dinamica (`ReportList`) accoppiata a uno Stack Statico a capacità fissata (`ReportStack`, max 10 elementi).
-* **Complessità Computazionale:** Inserimento e Push in **\(O(1)\)**.
-* **Razionale d'Uso:** La Linked List consente inserimenti in testa immediati senza preallocare memoria o conoscere il volume di problemi inviati. Lo Stack risponde alla semantica LIFO (Last In, First Out) per l'Undo: prima di alterare un report, il sistema esegue una **clonazione profonda** dei campi e spinge il backup nello stack. L'azione di annullamento estrae la copia e ripristina la lista RAM. Il disco non viene toccato, isolando le modifiche transitorie dal server.
+### 1.1 Flusso dei Dati
+Il ciclo di vita di una segnalazione segue tre stadi di memoria:
+1.  **Volatile (RAM)**: Memorizzazione in una `ReportList` durante la sessione attiva dell'utente. Permette operazioni di **Undo** tramite un `ReportStack`.
+2.  **Transitoria (Bench)**: Al logout, i dati vengono scritti in `reports_bench.txt`. Questo agisce come buffer per ottimizzare le operazioni di I/O.
+3.  **Persistente (Master)**: Al raggiungimento della soglia critica, avviene il **Flush**. I dati vengono smistati nei file master (`open.txt`, `progress.txt`, `closed.txt`) e gli indici AVL vengono aggiornati.
 
 ---
 
-## 3. Ricerca Operativa del Dipendente: BST per Codice Report
-* **Requisito:** Ricerca immediata e puntuale di una segnalazione tramite codice identificativo univoco.
-* **Scelta Algoritmica:** Albero Binario di Ricerca (`ReportBST`) strutturato sulla chiave `report_id`, serializzato In-Order su file (`report_BST_BY_REPORT_ID.txt`).
-* **Complessità Computazionale:** Ricerca nel caso medio in **\(O(\log n)\)**.
-* **Razionale d'Uso:** Per evitare scansioni orizzontali distruttive su archivi storici massivi, il server indicizza i record attivi in un BST usando il codice report come chiave. La navigazione binaria (`sinistra < radice < destra`) abbatte i tempi di localizzazione a livello logaritmico. Questo albero è il vero "Punto di Verità" (Single Source of Truth) dello stato dei dati: ogni modifica del dipendente viene riscritta all'istante su questo indice in RAM e sul disco, centralizzando la coerenza dell'anagrafica.
+## 2. Geometria del Database (Fixed-Length Records)
+Per garantire performance $O(1)$ nell'accesso ai file tramite `fseek`, è stata definita una geometria rigorosa a **351 byte** per record.
+
+| Campo | Dimensione (Byte) | Tipo/Formato | Descrizione |
+| :--- | :--- | :--- | :--- |
+| ID | 10 | `%010u` | Identificativo univoco report |
+| UserID | 10 | `%010u` | ID dell'autore |
+| Nome | 50 | `%-50s` | Nome del cittadino (padding spazi) |
+| Categoria | 1 | `char` | Codice categoria (0-3) |
+| Descrizione | 256 | `%-256s` | Testo della segnalazione |
+| Data | 11 | `%-11s` | Formato GG/MM/AAAA |
+| Urgenza | 1 | `char` | Livello 1, 2 o 3 |
+| Stato | 1 | `char` | O (Open), P (Progress), C (Closed) |
+| Riga Disco | 10 | `%010d` | Indice fisico nel file master |
+| Cell Status | 1 | `char` | A (Active), V (Void/Buco), E (End) |
+| Terminator | 1 | `\n` | Carattere di fine riga |
 
 ---
 
-## 4. Storico Personale del Cittadino: BST per User ID a Triangolazione di Codici (12 Byte)
-* **Requisito:** Visualizzazione dello storico del cittadino con garanzia di sincronizzazione degli stati ed isolamento.
-* **Scelta Algoritmica:** Albero Binario di Ricerca (`ReportBST`) strutturato sulla chiave `user_id` (hash numerico a 5 cifre), i cui nodi stampano sul disco rigido una riga contratta a geometria fissa da **12 byte** complessivi nel formato `[ID_USER(5)][ID_REPORT(5)]\n`.
-* **Complessità Computazionale:** Ricerca in **\(O(\log n)\)** + Risoluzione codici in **\(O(\log n)\)**.
-* **Razionale d'Uso:** Memorizzare l'intero oggetto report in questo albero causerebbe disallineamenti di stato se il dipendente modificasse la segnalazione. Salvando nel nodo **esclusivamente l'ID dell'utente e la lista dei codici report a lui associati**, la navigazione simmetrica (Opzione 6) estrae in modo sicuro i soli codici numerici d'indice e li risolve tramite una seconda ricerca in \(O(\log n)\) sul `bst_by_report_id.txt`. Questo garantisce uno storico pulito con stati sempre aggiornati in tempo reale, azzerando le asimmetrie informative.
+## 3. Gestione Efficiente dello Spazio
+### 3.1 Meccanismo dei "Buchi" (Hole Recovery)
+Invece di cancellare fisicamente i record (operazione $O(n)$ che richiederebbe la riscrittura del file), il sistema:
+1.  Marca la cella come 'V' (Void).
+2.  Salva l'indice della riga nel file `null_pointer.txt` relativo allo stato.
+3.  In fase di inserimento, consulta il file dei buchi con logica **LIFO** (Last-In First-Out) per riutilizzare lo spazio.
 
 ---
 
-## 5. Dashboard Operativa delle Urgenze: Coda a Priorità su Richiesta
-* **Requisito:** Ordinamento incrociato stocastico (Urgenza decrescente + Data FIFO più vecchia) per i dipendenti.
-* **Scelta Algoritmica:** Coda a Priorità (`PriorityQueue`) alimentata in RAM ed estratta in un file flat ordinato.
-* **Complessità Computazionale:** Inserimento ordinato in coda ed estrazione finale in **\(O(1)\)**.
-* **Razionale d'Uso:** Trattandosi di un'operazione computazionalmente onerosa, la coda non viene aggiornata in background ma viene compilata **solo sotto esplicita richiesta del dipendente**. Il comando innesca un flush forzato di consolidamento della BENCH, scansiona i file master attivi escludendo i casi `CLOSED`, popola la struttura e riversa sul disco il file lineare pre-ordinato `reports_by_priority.txt` pronto per la lettura interattiva via `fread`.
+## 4. Strutture Dati e Complessità Algoritmica
 
+### 4.1 AVL Tree (Indici di Ricerca)
+Utilizzati per mappare gli ID alle posizioni fisiche su disco.
+* **Search**: $O(\log n)$.
+* **Insert**: $O(\log n)$ con rotazioni per il bilanciamento.
+* **Memory**: Mantiene solo ID e Puntatore a riga, minimizzando l'occupazione RAM.
+
+### 4.2 Priority Queue (Dashboard Dipendente)
+Gestisce l'ordine di intervento basato su un criterio incrociato:
+1.  **Priorità Primaria**: Urgenza (3 > 2 > 1).
+2.  **Priorità Secondaria**: FIFO (Data più vecchia prima).
+* Implementata come lista ordinata per facilità di gestione delle stringhe data.
+
+---
+
+## 5. Requisiti di Sicurezza e Integrità
+* **Validazione**: Ogni input è filtrato da `validators.c` per prevenire Buffer Overflow e corruzione della geometria del file.
+* **Atomicità**: Il Flush avviene solo su record integri. Se un'operazione di scrittura fallisce, la Bench conserva i dati originali.
 

@@ -1,48 +1,68 @@
 #include "../../include/adt/report_stack.h"
 #include <stdlib.h>
 
+/* Nodo dello Stack */
+typedef struct StackNode {
+    Report data;
+    struct StackNode* next;
+} StackNode;
+
+/* Descrittore dello Stack (Opaque Pointer) */
 struct ReportStack {
-    Report data[MAX_STACK];
-    int top;
+    StackNode* top;
+    int size;
 };
 
 ReportStack create_stack() {
     ReportStack s = (ReportStack)malloc(sizeof(struct ReportStack));
-    if (s) s->top = -1;
+    if (s) {
+        s->top = NULL;
+        s->size = 0;
+    }
     return s;
 }
 
 void free_stack(ReportStack s) {
     if (!s) return;
-    for (int i = 0; i <= s->top; i++) {
-        free_report(s->data[i]);
+    StackNode* curr = s->top;
+    while (curr) {
+        StackNode* next = curr->next;
+        // Non liberiamo 'data' (il Report) perché è gestito altrove
+        free(curr);
+        curr = next;
     }
     free(s);
 }
 
-bool stack_push(ReportStack s, Report r) {
-    if (!s || s->top >= MAX_STACK - 1) return false;
-    
-    // Clona il report per memorizzare lo stato esatto in quel momento
-    Report backup = create_report(
-        get_report_id(r), get_report_citizen_name(r), get_report_category(r),
-        get_report_description(r), get_report_date(r), get_report_urgency(r)
-    );
-    update_report_status(backup, get_report_status(r));
-    
-    s->top++;
-    s->data[s->top] = backup;
-    return true;
+void stack_push(ReportStack s, Report r) {
+    if (!s || !r) return;
+
+    StackNode* new_node = (StackNode*)malloc(sizeof(StackNode));
+    if (!new_node) return;
+
+    new_node->data = r;
+    new_node->next = s->top;
+    s->top = new_node;
+    s->size++;
 }
 
 Report stack_pop(ReportStack s) {
-    if (!s || stack_is_empty(s)) return NULL;
-    Report r = s->data[s->top];
-    s->top--;
+    if (!s || !s->top) return NULL;
+
+    StackNode* temp = s->top;
+    Report r = temp->data;
+
+    s->top = temp->next;
+    free(temp);
+    s->size--;
+
     return r;
 }
 
 bool stack_is_empty(ReportStack s) {
-    return (!s || s->top == -1);
+    return (s == NULL || s->top == NULL);
 }
 
+int stack_size(ReportStack s) {
+    return s ? s->size : 0;
+}

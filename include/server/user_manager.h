@@ -4,17 +4,35 @@
 #include "../models/user.h"
 #include <stdbool.h>
 
-#define PATH_USERS "database/Master_Files/users.txt"
-#define PATH_USERS_IDX "database/Master_Files/users_idx.txt"
-#define BLOCK_SIZE_USERS 50
+/**
+ * @brief Tenta il login di un utente.
+ * Carica i dati dal file Master_Files/users.txt verificando username e password.
+ * * @param username Nome utente inserito
+ * @param password Password inserita
+ * @return Oggetto User se le credenziali sono corrette, NULL altrimenti.
+ */
+User login_user(const char* username, const char* password);
 
-// Restituisce la capacità attuale della tabella hash (leggendo il numero di righe di users_idx.txt)
-int get_users_hash_capacity();
-
-// Registra un nuovo utente nel sistema gestendo l'espansione dinamica dell'indice
+/**
+ * @brief Registra un nuovo utente nel sistema.
+ * Controlla l'unicità dell'username, assegna un ID incrementale e 
+ * scrive i dati in coda al file users.txt. Aggiorna anche users_idx.txt.
+ * * @param username Nome utente desiderato
+ * @param password Password scelta
+ * @param role Ruolo assegnato (CITIZEN o EMPLOYEE)
+ * @return true se la registrazione ha successo, false se l'utente esiste già.
+ */
 bool register_user(const char* username, const char* password, UserRole role);
 
-// Esegue il login O(1). Se le credenziali sono corrette, alloca e restituisce l'oggetto User caricato dal file
-User login_user(const char* username, const char* password);
+/**
+ * @brief Verifica se un username è già presente nel database.
+ * @return true se occupato, false se disponibile.
+ */
+bool is_username_taken(const char* username);
+
+/**
+ * @brief Restituisce il numero totale di utenti registrati.
+ */
+unsigned int get_user_count();
 
 #endif

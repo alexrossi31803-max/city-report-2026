@@ -5,80 +5,65 @@
 #include "../models/user.h"
 #include "../models/report.h"
 
-// ==============================================================================
-//  UTILITÀ DI FORMATTAZIONE STRINGHE
-// ==============================================================================
+/* ========================================================================== */
+/* UTILITÀ DI FORMATTAZIONE STRINGHE                                         */
+/* ========================================================================== */
 
 /**
- * @brief Formatta una stringa inserendo spazi in coda per raggiungere la dimensione fissa desiderata.
- * @pre dest deve essere preallocato con spazio sufficiente (fixed_length + 1).
- * @post dest conterrà src completata da spazi di padding e sigillata da \0.
+ * @brief Riempie una stringa di spazi fino alla lunghezza desiderata.
+ * @param dest Buffer di destinazione (deve essere fixed_length + 1)
+ * @param src Stringa sorgente
+ * @param fixed_length Lunghezza fissa desiderata
  */
 void pad_string(char* dest, const char* src, int fixed_length);
 
 /**
- * @brief Rimuove gli spazi in coda (padding) inseriti durante la scrittura su file binarizzato.
- * @pre str deve essere una stringa valida terminata da \0.
- * @post Modifica str sul posto inserendo \0 al termine dei caratteri grafici effettivi.
+ * @brief Rimuove gli spazi di padding in coda a una stringa.
  */
 void trim_string(char* str);
 
-// ==============================================================================
-//  MOTORID DI PARSING ANAGRAFICA UTENTE (GEOMETRIA FIKSA 107 BYTE)
-// ==============================================================================
-
-void user_to_line(char* line_buffer, int id, const char* user, const char* pass, UserRole role);
-void line_to_user_data(const char* line_buffer, int* id, char* user, char* pass, UserRole* role);
-
-// ==============================================================================
-//  MOTORI DI PARSING SEGNALAZIONE MASTER (GEOMETRIA FISSA 332 BYTE)
-// ==============================================================================
+/* ========================================================================== */
+/* PARSING ANAGRAFICA UTENTE (107 BYTE)                                      */
+/* ========================================================================== */
 
 /**
- * @brief Converte un oggetto Report in una riga a lunghezza fissa strutturata per il disco.
- * @pre line_buffer preallocato di dimensione minima REPORT_LINE_TOTAL + 1. r valido non NULL.
- * @post line_buffer conterrà esattamente 332 byte terminati da \0, inclusi i metadati geometrici.
+ * @brief Converte i dati utente in una riga fissa da 107 byte.
  */
-void report_to_line(char* line_buffer, Report r, char record_state);
+void user_to_line(char* line_buffer, unsigned int id, const char* user, const char* pass, UserRole role);
 
 /**
- * @brief Effettua il parsing inverso ricreando un oggetto Report da una riga binaria a dimensione fissa.
- * @pre line_buffer deve contenere una riga geometricamente integra da 332 caratteri.
- * @post Alloca in RAM un oggetto Report popolato e inietta nel record_state il flag letto.
+ * @brief Estrae i dati da una riga da 107 byte per creare un oggetto User.
  */
-Report line_to_report(const char* line_buffer, char* record_state, int* disk_row_out);
+void line_to_user_data(const char* line_buffer, unsigned int* id, char* user, char* pass, UserRole* role);
+
+/* ========================================================================== */
+/* PARSING SEGNALAZIONI (351 BYTE)                                           */
+/* ========================================================================== */
 
 /**
- * @brief Callback di sistema per la serializzazione in-order del BST dei report storici completi.
- * @pre f_out aperto in modalità scrittura binaria ("wb"), r istanza valida non NULL.
- * @post Scrive una riga da 332 byte sul canale di persistenza.
+ * @brief Serializza un report in una riga da 351 byte.
+ * @param line_buffer Il buffer di output
+ * @param r L'oggetto report
+ * @param cell_status 'A' (Attivo), 'V' (Vuoto/Buco), 'E' (Fine file)
  */
-void write_report_callback(FILE* f_out, Report r);
-
-// ==============================================================================
-//  MOTORI DI PARSING INDICE RIDOTTO UTENTE (GEOMETRIA CONTRATTA 12 BYTE)
-// ==============================================================================
+void report_to_line(char* line_buffer, Report r, char cell_status);
 
 /**
- * @brief Converte la coppia ID Utente ed ID Report in una riga fissa minima per disaccoppiare lo storico.
- * @pre line_buffer preallocato con dimensione minima di 13 byte.
- * @post Genera sul buffer esattamente 12 byte compatti nel formato: [ID_USER(5)][ID_REPORT(5)]\n\0.
+ * @brief Deserializza una riga da 351 byte in un oggetto Report RAM.
+ * @param line_buffer La riga letta dal file
+ * @param cell_status_out Ritorna lo stato della cella ('A', 'V', 'E')
+ * @param row_out Ritorna l'indice di riga decodificato (per i file Master)
  */
-void user_index_to_line(char* line_buffer, int id_user, int id_report);
+Report line_to_report(const char* line_buffer, char* cell_status_out, int* row_out);
+
+/* ========================================================================== */
+/* PARSING INDICE AVL (CHIAVI NUMERICHE)                                     */
+/* ========================================================================== */
 
 /**
- * @brief Effettua il parsing della riga ridotta estraendo le sole chiavi numeriche per la triangolazione binaria.
- * @pre line_buffer deve contenere una riga geometricamente integra da 12 caratteri caricate via fread.
- * @post Inietta nelle variabili di output i rispettivi codici numerici interi decodificati.
+ * @brief Formatta una coppia di ID per la persistenza dell'albero AVL.
+ * Formato: [KEY(10)][VALUE(10)]\n\0
  */
-void line_to_user_index(const char* line_buffer, int* id_user_out, int* id_report_out);
-
-/**
- * @brief Callback speciale per la serializzazione in-order dell'indice bst_by_user_id ridotto.
- * @pre f_out aperto in scrittura binaria ("wb"), r istanza di report valida.
- * @post Estrae le chiavi numeriche stabili e scrive sul disco una riga contratta da soli 12 byte.
- */
-void write_user_bst_callback(FILE* f_out, Report r);
+void avl_to_line(char* line_buffer, unsigned int key, int value);
 
 #endif
-

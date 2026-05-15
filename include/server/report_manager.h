@@ -3,34 +3,60 @@
 
 #include "../models/report.h"
 #include "../adt/report_list.h"
+#include "../adt/report_avl.h"
 #include <stdbool.h>
 
-#define PATH_BENCH "database/Derived_Files/reports_bench.txt"
-#define PATH_OPEN_LATEST "database/Master_Files/open_latest.txt"
-#define PATH_PROGRESS_LATEST "database/Master_Files/in_progress_latest.txt"
-#define PATH_CLOSED_LATEST "database/Master_Files/closed_latest.txt"
-#define PATH_BST_FILE "database/Derived_Files/report_BST_ID_USER.txt"
-#define PATH_PRIORITY_FILE "database/Derived_Files/reports_by_priority.txt"
+/**
+ * @brief Inizializza il sistema dei report caricando gli indici AVL in RAM.
+ * Da chiamare all'avvio del server.
+ */
+void init_report_manager();
 
-/* ESPOSIZIONE GLOBALE DEL CONTATORE DELLA CACHE PER SINCRO INTERFACCIA UTENTE */
-extern int contatore_bench_aggiunte;
+/**
+ * @brief Chiude il sistema, salvando gli indici AVL su disco e liberando la RAM.
+ */
+void shutdown_report_manager();
 
-// Riversa la Linked List di sessione della RAM del cittadino dentro il reports_bench.txt globale
-bool flush_session_to_bench(ReportList local_list);
+/**
+ * @brief Ottiene l'ID univoco per un nuovo report e incrementa il contatore globale.
+ * Legge da database/Master_Files/system_total_report.txt
+ */
+unsigned int get_next_report_id();
 
-// Esegue lo svuotamento forzato o automatico del Bench File smistando i dati nei file master e rigenerando il BST
+/**
+ * @brief Salva un report nella Bench (database/Derived_Files/reports_bench).
+ * Se la Bench raggiunge LIMIT_BENCH, scatta automaticamente il process_and_flush_bench().
+ */
+bool save_report_to_bench(Report r);
+
+/**
+ * @brief Esegue il commit dei dati dalla Bench ai file Master.
+ * Fase 1: Spostamento record e gestione buchi (LIFO tramite null_pointer.txt).
+ * Fase 2: Ricostruzione AVL ID (Derived_Files/report_AVL_BY_REPORT_ID.txt).
+ * Fase 3: Ricostruzione AVL User (Derived_Files/report_AVL_BY_USER_ID.txt).
+ */
 bool process_and_flush_bench();
 
-// Genera il file strutturato ad albero binario serializzato in-order basato sull'aggregazione per ID Utente
-void rebuild_report_bst_file();
+/**
+ * @brief Ricerca un report per ID.
+ * Gerarchia: 1. Bench -> 2. AVL Index -> 3. File Master corrispondente.
+ */
+Report find_report_by_id(unsigned int report_id);
 
-// Compila la coda a priorità unendo i dati attivi e scrive l'array lineare ordinato in reports_by_priority.txt
-void rebuild_priority_file();
+/**
+ * @brief Recupera tutti i report di un utente tramite l'AVL dedicato.
+ */
+ReportList get_reports_by_user(unsigned int user_id);
 
-// Aggiorna lo stato di una segnalazione modificando il record d'origine e accodando lo stato nei file _latest
-bool update_report_state_server(int report_id, ReportStatus new_status);
+/**
+ * @brief Aggiorna lo stato di un report esistente (es. da OPEN a PROGRESS).
+ * Gestisce lo spostamento fisico tra i file master se lo stato cambia.
+ */
+bool update_report_status(unsigned int report_id, ReportStatus new_status);
 
-// Restituisce l'ID progressivo per inserire un nuovo report unico a livello globale
-int generate_global_report_id();
+/**
+ * @brief Genera le statistiche di sistema leggendo i contatori e gli indici.
+ */
+void generate_system_statistics();
 
 #endif
