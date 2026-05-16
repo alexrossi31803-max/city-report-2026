@@ -38,28 +38,25 @@ Il sistema adotta un disaccoppiamento rigido per impedire la manipolazione incon
 
 ## 2. Mappa dei Livelli di Persistenza e Geometria Hardware
 
-La tabella illustra la migrazione di una segnalazione attraverso le strutture dati del finto server e la gestione geometrica millimetrica dei file master e di controllo.
-
 
 | Fase Operativa / Archivio | Struttura Dati / File Fisico | Dimensione Record | Logica di Accesso / Complessità | Stato e Indicatori di Cella |
 | :--- | :--- | :---: | :---: | :--- |
 | **1. RAM Locale** | `ReportList` (Dinamica) | Puntatore Opaco | $O(1)$ in testa | Stato iniziale sessione. Riga disco = `-1`. |
-| **2. Cache Server** | `reports_bench.txt` (Flat) | 352 Byte (Fisso) | $O(1)$ via cursore | Buffer statico da 50 slot. Regola append circolare. |
-| **3. DB Master Storico** | `open / progress / closed` | 352 Byte (Fisso) | $O(1)$ via `disk_row` | Cella: `'A'` (Attivo), `'N'` (Null/Buco), `'E'` (Sentinella). |
-| **4. Indice Report ID (AVL)**| `report_AVL_BY_REPORT_ID` | Formato Indice Ridotto| $O(\log n)$ bilanciato | Punto di Verità. Rigenerato ad albero bilanciato. |
-| **5. Indice User ID (AVL)** | `report_AVL_BY_USER_ID` | Formato Riga Ridotta | $O(\log n)$ bilanciato | Rigenerato in logica contratta accumulando n-report. |
-| **6. Registro Centrale** | `system_total_report.txt`| 11 Byte (Fisso) | $O(1)$ diretto `fseek` | Memorizza 11 variabili anagrafiche pre-calcolate. |
+| **2. Cache Server** | `reports_bench.txt` (Flat) | **351 Byte (`REPORT_BENCH_LINE`)** | $O(1)$ via cursore | Buffer statico da 50 slot. Regola append circolare. |
+| **3. DB Master Storico** | `open / progress / closed` | **352 Byte (`REPORT_MASTER_LINE`)** | $O(1)$ via `disk_row` | Cella: `'A'` (Attivo), `'N'` (Null/Buco), `'E'` (Sentinella). |
+| **4. Indice Report ID (AVL)**| `report_AVL_BY_REPORT_ID.txt` | **24 Byte (Fisso)** | $O(\log n)$ bilanciato | Punto di Verità. Rigenerato ad albero bilanciato: `[ID_REPORT(10)] [STATUS(1)] [DISK_ROW(10)]\n`. |
+| **5. Indice User ID (AVL)** | `report_AVL_BY_USER_ID.txt` | **21 Byte (Fisso)** | $O(\log n)$ bilanciato | Rigenerato in logica contratta accumulando n-report: `[ID_USER(10)][ID_REPORT(10)]\n`. |
+| **6. Registro Centrale** | `system_total_report.txt`| **11 Byte (`SYSTEM_REG_LINE`)** | $O(1)$ diretto `fseek` | Memorizza 11 variabili anagrafiche pre-calcolate. |
+
 
 ---
-
 ## 3. Gestione Intelligente dei File Master: Stack LIFO dei Buchi
 
 Per azzerare il degrado prestazionale causato dalle scansioni orizzontali in $O(n)$ nella ricerca di spazio libero, il server implementa un meccanismo di inserimento e riciclo geometrico in **$O(1)$**:
 
-1. **Generazione del Buco:** Quando un dipendente cambia lo stato di una segnalazione (es. da `OPEN` a `IN_PROGRESS`), il server estrae la `disk_row` memorizzata nel record, effettua un salto `fseek` immediato sul file master di provenienza e sovrascrive il flag di cella al byte 350 impostandolo a `'N'` (Null). 
-2. **Accatastamento LIFO:** Il numero di riga liberato viene immediatamente scritto in coda al file ausiliario corrispondente (es. `open_holes.txt`) in formato testo strutturato (`%010d\n`).
-3. **Riciclo Chirurgico:** Al momento del flush della cache `BENCH`, prima di appendere un record in coda al master, il server interroga lo stack dei buchi leggendo l'ultima riga. Se presente, estrae l'indice, tronca il file ausiliario per rimuovere il codice rimosso (semantica Pop dello Stack LIFO) e sovrascrive direttamente lo slot vuoto nel master in tempo costante. Se lo stack dei buchi è vuoto (restituisce indice negativo), il record viene inserito in Append alla fine del file master.
-
+1. **Generazione del Buco:** Quando un dipendente cambia lo stato di una segnalazione (es. da `OPEN` a `IN_PROGRESS`), il server estrae la `disk_row` memorizzata nel record, effettua un salto `fseek` immediato sul file master di provenienza moltiplicando per `REPORT_MASTER_LINE` (352 byte) e sovrascrive il flag di cella al byte 350 impostandolo a `'N'` (Null). 
+2. **Accatastamento LIFO:** Il numero di riga liberato viene immediatamente scritto in coda al file ausiliario corrispondente (es. `open_holes.txt`) in formato testo strutturato occupando esattamente i byte prescritti da `SYSTEM_REG_LINE` (`%010d\n`).
+3. **Riciclo Chirurgico:** Al momento del flush della cache `BENCH`, prima di appendere un record in coda al master, il server interroga lo stack dei buchi leggendo l'ultima riga. Se presente, estrae l'indice, esegue il troncamento fisico (semantica Pop dello Stack LIFO) e sovrascrive direttamente lo slot vuoto nel master in tempo costante. Se lo stack dei buchi è vuoto, il record viene inserito in Append alla fine del file master.
 ---
 
 ## 4. Consistenza delle Interrogazioni e Flusso del Cittadino

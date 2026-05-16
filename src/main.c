@@ -19,8 +19,8 @@ void menu_dipendente(User logged_in_user);
 void mostra_segnalazioni_paginate_filtrate(const char* file_path, ReportStatus stato_richiesto);
 void mostra_priority_queue_binaria(const char* file_path);
 void mostra_avl_utente_triangolato(void);
-void genera_statistiche_comunali_v2(void);
 void area_dipendente_cambio_stato(void);
+void genera_statistiche_comunali_v2(void);
 
 int main(void) {
     int scelta;
@@ -164,9 +164,8 @@ void menu_cittadino(User logged_in_user) {
                 printf("      STORICO PERSONALE DEL CITTADINO   \n");
                 printf("===================================================\n");
                 int cittadino_counter = 1;
-                char line[REPORT_LINE_TOTAL + 1];
+                char line[REPORT_MASTER_LINE + 1];
 
-                // 1. Lettura trasparente RAM Locale
                 list_rewind(ram_list);
                 Report r_ram = list_next(ram_list);
                 while (r_ram != NULL) {
@@ -179,20 +178,25 @@ void menu_cittadino(User logged_in_user) {
                     r_ram = list_next(ram_list);
                 }
 
-                // 2. Lettura trasparente BENCH Operativa
                 unsigned int current_bench = read_system_variable(REG_IDX_COUNTER_BENCH);
+                unsigned int internal_bench_ids[50];
+                int internal_bench_count = 0;
+                
                 FILE* f_b = fopen(PATH_BENCH, "rb");
                 if (f_b) {
                     for (unsigned int i = 0; i < current_bench; i++) {
-                        fseek(f_b, (long)i * REPORT_LINE_TOTAL, SEEK_SET);
-                        if (fread(line, sizeof(char), REPORT_LINE_TOTAL, f_b) == REPORT_LINE_TOTAL) {
+                        fseek(f_b, (long)i * REPORT_MASTER_LINE, SEEK_SET);
+                        if (fread(line, sizeof(char), REPORT_MASTER_LINE, f_b) == REPORT_MASTER_LINE) {
                             char state;
                             Report tmp = line_to_report_v2(line, &state);
-                            if (tmp && get_report_user_id(tmp) == target_user_id && get_report_status(tmp) != DESTROYED && state == 'A') {
-                                printf("[ CACHE BENCH ] Codice: %05u | Categoria: %s\n", get_report_id(tmp), get_category_string(get_report_category(tmp)));
-                                printf("                Urgenza: %c | Stato: %s | Desc: %s\n", get_report_urgency(tmp), get_status_string(get_report_status(tmp)), get_report_description(tmp));
-                                printf("------------------------------------------------------\n");
-                                cittadino_counter++;
+                            if (tmp && get_report_user_id(tmp) == target_user_id && state == 'A') {
+                                internal_bench_ids[internal_bench_count++] = get_report_id(tmp);
+                                if (get_report_status(tmp) != DESTROYED) {
+                                    printf("[ CACHE BENCH ] Codice: %05u | Categoria: %s\n", get_report_id(tmp), get_category_string(get_report_category(tmp)));
+                                    printf("                Urgenza: %c | Stato: %s | Desc: %s\n", get_report_urgency(tmp), get_status_string(get_report_status(tmp)), get_report_description(tmp));
+                                    printf("------------------------------------------------------\n");
+                                    cittadino_counter++;
+                                }
                             }
                             if (tmp) free_report(tmp);
                         }
@@ -200,25 +204,14 @@ void menu_cittadino(User logged_in_user) {
                     fclose(f_b);
                 }
 
-                // 3. Interrogazione logaritmica AVL by User ID
                 FILE* f_avl_u = fopen(PATH_AVL_USER_ID, "rb");
                 if (f_avl_u) {
                     unsigned int read_uid, read_rid;
                     while (fscanf(f_avl_u, "%u%u\n", &read_uid, &read_rid) == 2) {
                         if (read_uid == target_user_id) {
-                            // Verifica anti-sovrapposizione con la BENCH
                             bool in_bench = false;
-                            FILE* f_bc = fopen(PATH_BENCH, "rb");
-                            if (f_bc) {
-                                for (unsigned int k = 0; k < current_bench; k++) {
-                                    fseek(f_bc, (long)k * REPORT_LINE_TOTAL, SEEK_SET);
-                                    if (fread(line, sizeof(char), REPORT_LINE_TOTAL, f_bc) == REPORT_LINE_TOTAL) {
-                                        char st; Report r_c = line_to_report_v2(line, &st);
-                                        if (r_c && get_report_id(r_c) == read_rid && st == 'A') { in_bench = true; free_report(r_c); break; }
-                                        if (r_c) free_report(r_c);
-                                    }
-                                }
-                                fclose(f_bc);
+                            for (int k = 0; k < internal_bench_count; k++) {
+                                if (internal_bench_ids[k] == read_rid) { in_bench = true; break; }
                             }
 
                             if (!in_bench) {
@@ -237,8 +230,8 @@ void menu_cittadino(User logged_in_user) {
                                     const char* path_master = (vec_st == OPEN) ? PATH_OPEN_MASTER : (vec_st == IN_PROGRESS) ? PATH_PROGRESS_MASTER : PATH_CLOSED_MASTER;
                                     FILE* f_m = fopen(path_master, "rb");
                                     if (f_m) {
-                                        fseek(f_m, (long)found_row * REPORT_LINE_TOTAL, SEEK_SET);
-                                        if (fread(line, sizeof(char), REPORT_LINE_TOTAL, f_m) == REPORT_LINE_TOTAL && line[350] == 'A') {
+                                        fseek(f_m, (long)found_row * REPORT_MASTER_LINE, SEEK_SET);
+                                        if (fread(line, sizeof(char), REPORT_MASTER_LINE, f_m) == REPORT_MASTER_LINE && line[350] == 'A') {
                                             char st_cell; Report r_real = line_to_report_v2(line, &st_cell);
                                             if (r_real && get_report_status(r_real) != DESTROYED) {
                                                 printf("[ MASTER DISK ] Codice: %05u | Categoria: %s\n", get_report_id(r_real), get_category_string(get_report_category(r_real)));
@@ -347,7 +340,7 @@ void menu_dipendente(User logged_in_user) {
                 area_dipendente_cambio_stato();
                 break;
             case 5:
-                process_and_flush_bench_v2(); // Forza il consolidamento
+                process_and_flush_bench_v2(); 
                 mostra_priority_queue_binaria(PATH_PRIORITY_FILE);
                 break;
             case 6: 
@@ -365,161 +358,6 @@ void menu_dipendente(User logged_in_user) {
     }
 }
 
-void mostra_segnalazioni_paginate_filtrate(const char* file_path, ReportStatus stato_richiesto) {
-    char line[REPORT_LINE_TOTAL + 1];
-    int counter = 0;
-    int input_pag;
-    unsigned int current_bench = read_system_variable(REG_IDX_COUNTER_BENCH);
-
-    if (stato_richiesto == OPEN) {
-        printf("--- DATI VELOCI IN CACHE OPERATIVA (BENCH) ---\n");
-        FILE* f_bench = fopen(PATH_BENCH, "rb");
-        if (f_bench) {
-            for (unsigned int i = 0; i < current_bench; i++) {
-                fseek(f_bench, (long)i * REPORT_LINE_TOTAL, SEEK_SET);
-                if (fread(line, sizeof(char), REPORT_LINE_TOTAL, f_bench) == REPORT_LINE_TOTAL && line[350] == 'A') {
-                    char st; Report r = line_to_report_v2(line, &st);
-                    if (r && get_report_status(r) == OPEN) {
-                        printf("[IN CACHE] ID: %05u | Cittadino: %s | Cat: %s\nDesc: %s\n", 
-                               get_report_id(r), get_report_citizen_name(r), get_category_string(get_report_category(r)), get_report_description(r));
-                        printf("------------------------------------------------------\n");
-                        counter++;
-                    }
-                    if (r) free_report(r);
-                }
-            }
-            fclose(f_bench);
-        }
-    }
-
-    printf("\n--- DATI STABILI ARCHIVIO COMUNALE (MASTER) ---\n");
-    FILE* f_master = fopen(file_path, "rb");
-    if (!f_master) { printf("Fine dell'elenco. %d segnalazioni attive mostrate.\n", counter); return; }
-
-    while (fread(line, sizeof(char), REPORT_LINE_TOTAL, f_master) == REPORT_LINE_TOTAL) {
-        if (line[350] == 'N') continue; 
-        if (line[350] == 'E') break;
-        
-        char cell_st; Report r = line_to_report_v2(line, &cell_st);
-        if (r && cell_st == 'A') {
-            printf("[DISCO] ID: %05u | Cittadino: %s | Cat: %s\nDesc: %s\n", 
-                   get_report_id(r), get_report_citizen_name(r), get_category_string(get_report_category(r)), get_report_description(r));
-            printf("------------------------------------------------------\n");
-            counter++;
-
-            if (counter % 5 == 0) {
-                printf("Premi [INVIO] per caricare altri elementi o 'q' per fermarti: ");
-                input_pag = getchar();
-                if (input_pag == 'q' || input_pag == 'Q') { free_report(r); fclose(f_master); return; }
-                if (input_pag != '\n') while (getchar() != '\n');
-            }
-        }
-        if (r) free_report(r);
-    }
-    fclose(f_master);
-}
-
-void mostra_priority_queue_binaria(const char* file_path) {
-    (void)file_path;
-    // Compila la coda a priorità estraendo i dati attivi ed ordinandoli
-    PriorityQueue pq = create_pq();
-    const char* paths[] = { PATH_OPEN_MASTER, PATH_PROGRESS_MASTER };
-    char line[REPORT_LINE_TOTAL + 1];
-    
-    for (int i = 0; i < 2; i++) {
-        FILE* f = fopen(paths[i], "rb");
-        if (f) {
-            while (fread(line, sizeof(char), REPORT_LINE_TOTAL, f) == REPORT_LINE_TOTAL) {
-                if (line[350] == 'N') continue;
-                char st; Report r = line_to_report_v2(line, &st);
-                if (r && st == 'A' && get_report_status(r) != DESTROYED) pq_enqueue(pq, r);
-                else if (r) free_report(r);
-            }
-            fclose(f);
-        }
-    }
-
-    int counter = 0;
-    printf("\n--- CRONOLOGIA DELLE PRIORITA' OPERATIVE ---\n");
-    while (!pq_is_empty(pq)) {
-        Report r = pq_dequeue(pq);
-        printf("[PRIORITA'] ID: %05u | Urgenza: %c | Data: %s | Cat: %s\nDesc: %s\n", 
-               get_report_id(r), get_report_urgency(r), get_report_date(r), get_category_string(get_report_category(r)), get_report_description(r));
-        printf("------------------------------------------------------\n");
-        counter++;
-        free_report(r);
-        
-        if (counter % 5 == 0 && !pq_is_empty(pq)) {
-            printf("Premi [INVIO] per caricare altri elementi o 'q' per fermarti: ");
-            int ch = getchar();
-            if (ch == 'q' || ch == 'Q') { free_pq(pq); return; }
-            if (ch != '\n') while (getchar() != '\n');
-        }
-    }
-    free_pq(pq);
-}
-
-void mostra_avl_utente_triangolato(void) {
-    FILE* f_avl_u = fopen(PATH_AVL_USER_ID, "rb");
-    if (!f_avl_u) { printf("Indice AVL utenti vuoto o non inizializzato.\n"); return; }
-    
-    unsigned int read_uid, read_rid;
-    char line[REPORT_LINE_TOTAL + 1];
-    int counter = 0;
-    
-    printf("\n--- NAVIGAZIONE SIMMETRICA AVL UTENTE TRIANGOLATO ---\n");
-    while (fscanf(f_avl_u, "%u%u\n", &read_uid, &read_rid) == 2) {
-        FILE* f_avl_r = fopen(PATH_AVL_REPORT_ID, "rb");
-        int found_row = -1; char st_ch = '0';
-        if (f_avl_r) {
-            unsigned int r_id; char st; int r_row;
-            while (fscanf(f_avl_r, "%u %c %d\n", &r_id, &st, &r_row) == 3) {
-                if (r_id == read_rid) { found_row = r_row; st_ch = st; break; }
-            }
-            fclose(f_avl_r);
-        }
-        
-        if (found_row != -1) {
-            ReportStatus vec_st = (ReportStatus)(st_ch - '0');
-            const char* path_master = (vec_st == OPEN) ? PATH_OPEN_MASTER : (vec_st == IN_PROGRESS) ? PATH_PROGRESS_MASTER : PATH_CLOSED_MASTER;
-            FILE* f_m = fopen(path_master, "rb");
-            if (f_m) {
-                fseek(f_m, (long)found_row * REPORT_LINE_TOTAL, SEEK_SET);
-                if (fread(line, sizeof(char), REPORT_LINE_TOTAL, f_m) == REPORT_LINE_TOTAL && line[350] == 'A') {
-                    char cell_st; Report r = line_to_report_v2(line, &cell_st);
-                    if (r && get_report_status(r) != DESTROYED) {
-                        printf("[CHIAVE AVL USER: %05u] -> ID Report: %05u | Cat: %s | Stato: %s\n", 
-                               read_uid, get_report_id(r), get_category_string(get_report_category(r)), get_status_string(get_report_status(r)));
-                        counter++;
-                    }
-                    if (r) free_report(r);
-                }
-                fclose(f_m);
-            }
-        }
-    }
-    fclose(f_avl_u);
-    printf("Fine dell'albero. %d corrispondenze totali caricate.\n", counter);
-}
-
-void genera_statistiche_comunali_v2(void) {
-    printf("\n===================================================\n");
-    printf("     REPORT STATISTICO ISTANTANEO O(1) REGISTRI    \n");
-    printf("===================================================\n");
-    printf("Numero totale di segnalazioni attive nel Comune: %u\n", read_system_variable(REG_IDX_NM_REPORT));
-    printf("  - Casi Aperti (OPEN):          %u\n", read_system_variable(REG_IDX_STAT_OPEN));
-    printf("  - In Lavorazione (PROGRESS):  %u\n", read_system_variable(REG_IDX_STAT_PROGRESS));
-    printf("  - Pratiche Chiuse (CLOSED):    %u\n", read_system_variable(REG_IDX_STAT_CLOSED));
-    
-    printf("\nSuddivisione analitica per Categoria:\n");
-    printf("  - Buca Stradale:               %u\n", read_system_variable(REG_IDX_CAT_ROAD));
-    printf("  - Illuminazione Pubblica:      %u\n", read_system_variable(REG_IDX_CAT_LIGHTING));
-    printf("  - Rifiuti Abbandonati:         %u\n", read_system_variable(REG_IDX_CAT_WASTE));
-    printf("  - Guasto Impianto:             %u\n", read_system_variable(REG_IDX_CAT_INFRASTRUCT));
-    printf("  - Altro:                       %u\n", read_system_variable(REG_IDX_CAT_OTHER));
-    printf("===================================================\n");
-}
-
 void area_dipendente_cambio_stato(void) {
     unsigned int target_id;
     printf("\nInserisci l'ID del report da modificare: ");
@@ -529,7 +367,7 @@ void area_dipendente_cambio_stato(void) {
     }
     while (getchar() != '\n');
     
-    char line[REPORT_LINE_TOTAL + 1];
+    char line[REPORT_MASTER_LINE + 1];
     bool trovato = false;
     unsigned int counter_bench = read_system_variable(REG_IDX_COUNTER_BENCH);
     
@@ -537,8 +375,8 @@ void area_dipendente_cambio_stato(void) {
     FILE* f_bench = fopen(PATH_BENCH, "rb+");
     if (f_bench) {
         for (unsigned int i = 0; i < counter_bench; i++) {
-            fseek(f_bench, (long)i * REPORT_LINE_TOTAL, SEEK_SET);
-            if (fread(line, sizeof(char), REPORT_LINE_TOTAL, f_bench) != REPORT_LINE_TOTAL) continue;
+            fseek(f_bench, (long)i * REPORT_BENCH_LINE, SEEK_SET);
+            if (fread(line, sizeof(char), REPORT_BENCH_LINE, f_bench) != REPORT_BENCH_LINE) continue;
             char state;
             Report r = line_to_report_v2(line, &state);
             if (r && get_report_id(r) == target_id && state == 'A') {
@@ -560,7 +398,6 @@ void area_dipendente_cambio_stato(void) {
                 if (scanf("%d", &nuovo_st) == 1) {
                     while (getchar() != '\n');
                     
-                    // Modifica atomica delle variabili di registro se cambia lo stato interno
                     ReportStatus vecchio_st = get_report_status(r);
                     ReportStatus nuovo_st_enum = (ReportStatus)nuovo_st;
                     
@@ -573,7 +410,6 @@ void area_dipendente_cambio_stato(void) {
                             int reg_aumenta = (nuovo_st_enum == OPEN) ? REG_IDX_STAT_OPEN : (nuovo_st_enum == IN_PROGRESS) ? REG_IDX_STAT_PROGRESS : REG_IDX_STAT_CLOSED;
                             write_system_variable(reg_aumenta, read_system_variable(reg_aumenta) + 1);
                         } else {
-                            // Se distrutto, riduce anche il contatore anagrafico generale e di categoria
                             unsigned int active_reps = read_system_variable(REG_IDX_NM_REPORT);
                             if (active_reps > 0) write_system_variable(REG_IDX_NM_REPORT, active_reps - 1);
                             
@@ -591,10 +427,10 @@ void area_dipendente_cambio_stato(void) {
                     }
                     
                     update_report_status(r, nuovo_st_enum);
-                    char out_line[REPORT_LINE_TOTAL + 1];
-                    report_to_line(out_line, r, 'A');
-                    fseek(f_bench, (long)i * REPORT_LINE_TOTAL, SEEK_SET);
-                    fwrite(out_line, sizeof(char), REPORT_LINE_TOTAL, f_bench);
+                    char out_line[REPORT_BENCH_LINE + 1];
+                    report_to_line(out_line, r, '\0');
+                    fseek(f_bench, (long)i * REPORT_BENCH_LINE, SEEK_SET);
+                    fwrite(out_line, sizeof(char), REPORT_BENCH_LINE, f_bench);
                     printf("\n[OK] Stato modificato con successo all'interno della BENCH.\n");
                 } else {
                     while (getchar() != '\n');
@@ -634,14 +470,13 @@ void area_dipendente_cambio_stato(void) {
             
             FILE* f_master = fopen(path_old, "rb");
             if (f_master) {
-                fseek(f_master, (long)found_row * REPORT_LINE_TOTAL, SEEK_SET);
-                if (fread(line, sizeof(char), REPORT_LINE_TOTAL, f_master) == REPORT_LINE_TOTAL) {
+                fseek(f_master, (long)found_row * REPORT_MASTER_LINE, SEEK_SET);
+                if (fread(line, sizeof(char), REPORT_MASTER_LINE, f_master) == REPORT_MASTER_LINE) {
                     char st_cell;
                     Report r = line_to_report_v2(line, &st_cell);
                     if (r && st_cell == 'A') {
                         trovato = true;
                         
-                        // Mostra l'intera anagrafica ESCLUDENDO rigorosamente il metadato disk_row
                         printf("\n[TROVATO IN ARCHIVIO MASTER DI VERITA']\n");
                         printf("ID Segnalazione: %05u\nCittadino: %s\nCategoria: %s\nDescrizione: %s\nData: %s\nUrgenza: %c\nStato Corrente: %s\n",
                                get_report_id(r), get_report_citizen_name(r), get_category_string(get_report_category(r)),
@@ -656,21 +491,19 @@ void area_dipendente_cambio_stato(void) {
                             // Invalida geometricamente la vecchia cella impostandola a 'N'
                             FILE* f_inv = fopen(path_old, "rb+");
                             if (f_inv) {
-                                fseek(f_inv, (long)found_row * REPORT_LINE_TOTAL, SEEK_SET);
-                                char clear_buf[REPORT_LINE_TOTAL + 1];
-                                if (fread(clear_buf, sizeof(char), REPORT_LINE_TOTAL, f_inv) == REPORT_LINE_TOTAL) {
-                                    clear_buf[350] = 'N'; // Flag della cella invalidata a NULL
-                                    fseek(f_inv, (long)found_row * REPORT_LINE_TOTAL, SEEK_SET);
-                                    fwrite(clear_buf, sizeof(char), REPORT_LINE_TOTAL, f_inv);
+                                fseek(f_inv, (long)found_row * REPORT_MASTER_LINE, SEEK_SET);
+                                char clear_buf[REPORT_MASTER_LINE + 1];
+                                if (fread(clear_buf, sizeof(char), REPORT_MASTER_LINE, f_inv) == REPORT_MASTER_LINE) {
+                                    clear_buf[350] = 'N'; 
+                                    fseek(f_inv, (long)found_row * REPORT_MASTER_LINE, SEEK_SET);
+                                    fwrite(clear_buf, sizeof(char), REPORT_MASTER_LINE, f_inv);
                                 }
                                 fclose(f_inv);
                             }
                             
-                            // Accatasta la riga libera nello stack LIFO dei buchi ausiliario
                             FILE* f_h = fopen(path_holes, "ab");
                             if (f_h) { fprintf(f_h, "%010d\n", found_row); fclose(f_h); }
                             
-                            // Allinea le statistiche di sistema atomiche
                             int old_reg = (vecchio_stato == OPEN) ? REG_IDX_STAT_OPEN : (vecchio_stato == IN_PROGRESS) ? REG_IDX_STAT_PROGRESS : REG_IDX_STAT_CLOSED;
                             unsigned int prev_c = read_system_variable(old_reg);
                             if (prev_c > 0) write_system_variable(old_reg, prev_c - 1);
@@ -694,9 +527,8 @@ void area_dipendente_cambio_stato(void) {
                                 if (cat_count > 0) write_system_variable(cat_reg, cat_count - 1);
                             }
                             
-                            // Carica il record alterato come append transitorio nella cache BENCH
                             update_report_status(r, nuovo_st_enum);
-                            set_report_disk_row(r, -1); // Torna volatile
+                            set_report_disk_row(r, -1); 
                             
                             if (counter_bench >= LIMIT_BENCH) {
                                 process_and_flush_bench_v2();
@@ -705,10 +537,10 @@ void area_dipendente_cambio_stato(void) {
                             
                             FILE* f_b_add = fopen(PATH_BENCH, "rb+");
                             if (f_b_add) {
-                                char out_l[REPORT_LINE_TOTAL + 1];
-                                report_to_line(out_l, r, 'A');
-                                fseek(f_b_add, (long)counter_bench * REPORT_LINE_TOTAL, SEEK_SET);
-                                fwrite(out_l, sizeof(char), REPORT_LINE_TOTAL, f_b_add);
+                                char out_l[REPORT_BENCH_LINE + 1];
+                                report_to_line(out_l, r, '\0');
+                                fseek(f_b_add, (long)counter_bench * REPORT_BENCH_LINE, SEEK_SET);
+                                fwrite(out_l, sizeof(char), REPORT_BENCH_LINE, f_b_add);
                                 fclose(f_b_add);
                                 write_system_variable(REG_IDX_COUNTER_BENCH, counter_bench + 1);
                             }
@@ -727,4 +559,160 @@ void area_dipendente_cambio_stato(void) {
     if (!trovato) {
         printf("\n[ERRORE] Impossibile trovare la segnalazione con ID %05u nel sistema comunale.\n", target_id);
     }
+}
+
+void mostra_segnalazioni_paginate_filtrate(const char* file_path, ReportStatus stato_richiesto) {
+    char line[REPORT_MASTER_LINE + 1];
+    int counter = 0;
+    int input_pag;
+    unsigned int current_bench = read_system_variable(REG_IDX_COUNTER_BENCH);
+
+    if (stato_richiesto == OPEN) {
+        printf("--- DATI VELOCI IN CACHE OPERATIVA (BENCH) ---\n");
+        FILE* f_bench = fopen(PATH_BENCH, "rb");
+        if (f_bench) {
+            for (unsigned int i = 0; i < current_bench; i++) {
+                fseek(f_bench, (long)i * REPORT_BENCH_LINE, SEEK_SET);
+                if (fread(line, sizeof(char), REPORT_BENCH_LINE, f_bench) == REPORT_BENCH_LINE) {
+                    char st; Report r = line_to_report_v2(line, &st);
+                    if (r && get_report_status(r) == OPEN) {
+                        printf("[IN CACHE] ID: %05u | Cittadino: %s | Cat: %s\nDesc: %s\n", 
+                               get_report_id(r), get_report_citizen_name(r), get_category_string(get_report_category(r)), get_report_description(r));
+                        printf("------------------------------------------------------\n");
+                        counter++;
+                    }
+                    if (r) free_report(r);
+                }
+            }
+            fclose(f_bench);
+        }
+    }
+
+    printf("\n--- DATI STABILI ARCHIVIO COMUNALE (MASTER) ---\n");
+    FILE* f_master = fopen(file_path, "rb");
+    if (!f_master) { printf("Fine dell'elenco. %d segnalazioni attive mostrate.\n", counter); return; }
+
+    while (fread(line, sizeof(char), REPORT_MASTER_LINE, f_master) == REPORT_MASTER_LINE) {
+        if (line[350] == 'N') continue; 
+        if (line[350] == 'E') break;
+        
+        char cell_st; Report r = line_to_report_v2(line, &cell_st);
+        if (r && cell_st == 'A') {
+            printf("[DISCO] ID: %05u | Cittadino: %s | Cat: %s\nDesc: %s\n", 
+                   get_report_id(r), get_report_citizen_name(r), get_category_string(get_report_category(r)), get_report_description(r));
+            printf("------------------------------------------------------\n");
+            counter++;
+
+            if (counter % 5 == 0) {
+                printf("Premi [INVIO] per caricare altri elementi o 'q' per fermarti: ");
+                input_pag = getchar();
+                if (input_pag == 'q' || input_pag == 'Q') { free_report(r); fclose(f_master); return; }
+                if (input_pag != '\n') while (getchar() != '\n');
+            }
+        }
+        if (r) free_report(r);
+    }
+    fclose(f_master);
+}
+
+
+void mostra_priority_queue_binaria(const char* file_path) {
+    (void)file_path;
+    PriorityQueue pq = create_pq();
+    const char* paths[] = { PATH_OPEN_MASTER, PATH_PROGRESS_MASTER };
+    char line[REPORT_MASTER_LINE + 1];
+    
+    for (int i = 0; i < 2; i++) {
+        FILE* f = fopen(paths[i], "rb");
+        if (f) {
+            while (fread(line, sizeof(char), REPORT_MASTER_LINE, f) == REPORT_MASTER_LINE) {
+                if (line[350] == 'N') continue;
+                char st; Report r = line_to_report_v2(line, &st);
+                if (r && st == 'A' && get_report_status(r) != DESTROYED) pq_enqueue(pq, r);
+                else if (r) free_report(r);
+            }
+            fclose(f);
+        }
+    }
+
+    int counter = 0;
+    printf("\n--- CRONOLOGIA DELLE PRIORITA' OPERATIVE ---\n");
+    while (!pq_is_empty(pq)) {
+        Report r = pq_dequeue(pq);
+        printf("[PRIORITA'] ID: %05u | Urgenza: %c | Data: %s | Cat: %s\nDesc: %s\n", 
+               get_report_id(r), get_report_urgency(r), get_report_date(r), get_category_string(get_report_category(r)), get_report_description(r));
+        printf("------------------------------------------------------\n");
+        counter++;
+        free_report(r);
+        
+        if (counter % 5 == 0 && !pq_is_empty(pq)) {
+            printf("Premi [INVIO] per caricare altri elementi o 'q' per fermarti: ");
+            int ch = getchar();
+            if (ch == 'q' || ch == 'Q') { free_pq(pq); return; }
+            if (ch != '\n') while (getchar() != '\n');
+        }
+    }
+    free_pq(pq);
+}
+
+
+void mostra_avl_utente_triangolato(void) {
+    FILE* f_avl_u = fopen(PATH_AVL_USER_ID, "rb");
+    if (!f_avl_u) { printf("Indice AVL utenti vuoto o non inizializzato.\n"); return; }
+    
+    unsigned int read_uid, read_rid;
+    char line[REPORT_MASTER_LINE + 1];
+    int counter = 0;
+    
+    printf("\n--- NAVIGAZIONE SIMMETRICA AVL UTENTE TRIANGOLATO ---\n");
+    while (fscanf(f_avl_u, "%u%u\n", &read_uid, &read_rid) == 2) {
+        FILE* f_avl_r = fopen(PATH_AVL_REPORT_ID, "rb");
+        int found_row = -1; char st_ch = '0';
+        if (f_avl_r) {
+            unsigned int r_id; char st; int r_row;
+            while (fscanf(f_avl_r, "%u %c %d\n", &r_id, &st, &r_row) == 3) {
+                if (r_id == read_rid) { found_row = r_row; st_ch = st; break; }
+            }
+            fclose(f_avl_r);
+        }
+        
+        if (found_row != -1) {
+            ReportStatus vec_st = (ReportStatus)(st_ch - '0');
+            const char* path_master = (vec_st == OPEN) ? PATH_OPEN_MASTER : (vec_st == IN_PROGRESS) ? PATH_PROGRESS_MASTER : PATH_CLOSED_MASTER;
+            FILE* f_m = fopen(path_master, "rb");
+            if (f_m) {
+                fseek(f_m, (long)found_row * REPORT_MASTER_LINE, SEEK_SET);
+                if (fread(line, sizeof(char), REPORT_MASTER_LINE, f_m) == REPORT_MASTER_LINE && line[350] == 'A') {
+                    char cell_st; Report r = line_to_report_v2(line, &cell_st);
+                    if (r && get_report_status(r) != DESTROYED) {
+                        printf("[CHIAVE AVL USER: %05u] -> ID Report: %05u | Cat: %s | Stato: %s\n", 
+                               read_uid, get_report_id(r), get_category_string(get_report_category(r)), get_status_string(get_report_status(r)));
+                        counter++;
+                    }
+                    if (r) free_report(r);
+                }
+                fclose(f_m);
+            }
+        }
+    }
+    fclose(f_avl_u);
+    printf("Fine dell'albero. %d corrispondenze totali caricate.\n", counter);
+}
+
+void genera_statistiche_comunali_v2(void) {
+    printf("\n===================================================\n");
+    printf("     REPORT STATISTICO ISTANTANEO O(1) REGISTRI    \n");
+    printf("===================================================\n");
+    printf("Numero totale di segnalazioni attive nel Comune: %u\n", read_system_variable(REG_IDX_NM_REPORT));
+    printf("  - Casi Aperti (OPEN):          %u\n", read_system_variable(REG_IDX_STAT_OPEN));
+    printf("  - In Lavorazione (PROGRESS):   %u\n", read_system_variable(REG_IDX_STAT_PROGRESS));
+    printf("  - Pratiche Chiuse (CLOSED):    %u\n", read_system_variable(REG_IDX_STAT_CLOSED));
+    
+    printf("\nSuddivisione analitica per Categoria:\n");
+    printf("  - Buca Stradale:               %u\n", read_system_variable(REG_IDX_CAT_ROAD));
+    printf("  - Illuminazione Pubblica:      %u\n", read_system_variable(REG_IDX_CAT_LIGHTING));
+    printf("  - Rifiuti Abbandonati:         %u\n", read_system_variable(REG_IDX_CAT_WASTE));
+    printf("  - Guasto Impianto:             %u\n", read_system_variable(REG_IDX_CAT_INFRASTRUCT));
+    printf("  - Altro:                       %u\n", read_system_variable(REG_IDX_CAT_OTHER));
+    printf("===================================================\n");
 }

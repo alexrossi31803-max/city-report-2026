@@ -17,11 +17,15 @@
 /* 
    Geometrie di Riga Fisse (Testo + Flag Cella Spaziale + Newline)
    - USER_LINE_TOTAL: 5(ID) + 50(User) + 50(Pass) + 1(Role) + 1(\n) = 107 byte
-   - REPORT_LINE_TOTAL: 10(ID) + 10(USER_ID) + 50(Name) + 1(Cat) + 256(Desc) + 11(Date) + 1(Urg) + 1(Stat) + 10(Row) + 1(FlagCella) + 1(\n) = 352 byte
+   - USER_IDX_LINE: Ogni riga dell'indice utenti occupa stabilmente 6 byte
+   - REPORT_BENCH_LINE: 350 byte di record + 1 byte di newline = 351 byte
+   - REPORT_MASTER_LINE: 350 byte di record + 1 byte di flag + 1 byte di newline = 352 byte
    - SYSTEM_REG_LINE: Ogni riga del registro centrale occupa stabilmente 11 byte: %010u\n
 */
 #define USER_LINE_TOTAL 107   
-#define REPORT_LINE_TOTAL 352 
+#define USER_IDX_LINE 6
+#define REPORT_BENCH_LINE 351
+#define REPORT_MASTER_LINE 352 
 #define SYSTEM_REG_LINE 11    
 
 /* Mappa dei Percorsi Database Binarizzati */
@@ -77,3 +81,4 @@ typedef enum {
 } ReportCategory;
 
 #endif
+

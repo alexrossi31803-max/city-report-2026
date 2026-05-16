@@ -24,10 +24,9 @@ Questo documento descrive il razionale algoritmico e le complessità computazion
 * **Requisito:** Ricerca e sfoltimento immediato di una segnalazione tramite codice identificativo senza degradamento prestazionale.
 * **Scelta Algoritmica:** Albero Auto-Bilanciante AVL (`ReportAVL`) strutturato sulla chiave `report_id`, serializzato In-Order su file (`report_AVL_BY_REPORT_ID.txt`).
 * **Complessità Computazionale:** Caso peggiore e medio strettamente limitato a **$O(\log n)$**.
-* **Razionale d'Uso:** Sostituendo il vecchio BST, l'albero AVL introduce rotazioni singole e doppie (LL, RR, LR, RL) basate sul Fattore di Bilanciamento per mantenere la differenza di altezza tra sottoalberi $\le 1$. Questo garantisce matematicamente che l'albero non degradi mai in una lista lineare (collo di bottiglia del BST). Il dipendente esegue ricerche rapide e mirate sul canale di verità del disco per localizzare e invalidare a `N` (Null) le vecchie celle fisiche master in tempo logaritmico certo.
+* **Razionale d'Uso:** L'albero AVL introduce rotazioni singole e doppie (LL, RR, LR, RL) basate sul Fattore di Bilanciamento per mantenere la differenza di altezza tra sottoalberi $\le 1$, garantendo che non degradi mai in una lista. Il dipendente esegue ricerche rapide sul canale di verità del disco per localizzare e invalidare a `N` (Null) le vecchie celle fisiche master in tempo logaritmico certo. L'accesso al file master avviene saltando geometricamente tramite la macro rigida **`REPORT_MASTER_LINE` (352 byte)**.
 
 ---
-
 ## 4. Storico Personale del Cittadino: Albero AVL per User ID con Nodi ad Accumulo Dinamico
 * **Requisito:** Estrazione dello storico del cittadino con isolamento delle modifiche ed elisione delle asimmetrie informative.
 * **Scelta Algoritmica:** Albero Auto-Bilanciante AVL (`ReportAVL`) strutturato sulla chiave `user_id`, i cui nodi contengono vettori dinamici in grado di accumulare e aggregare n-chiavi di `report_id` per lo stesso utente.
@@ -38,9 +37,9 @@ Questo documento descrive il razionale algoritmico e le complessità computazion
 
 ## 5. Dashboard Statistica e Indicatori Comunali: Registro Centrale su File
 * **Requisito:** Generazione istantanea del report statistico senza scansioni orizzontali distruttive e onerose dei file storici.
-* **Scelta Algoritmica:** Registro di Controllo Binarizzato statico in Append/Salto geometrico (`system_total_report.txt`).
+* **Scelta Algoritmica:** Registro di Controllo Binarizzato statico con aggiornamento atomico (`system_total_report.txt`).
 * **Complessità Computazionale:** Lettura, Scrittura e Aggiornamento in **$O(1)$**.
-* **Razionale d'Uso:** Per azzerare i tempi di scansione sequenziale su archivi comunali storici massivi (che richiederebbero scansioni distruttive dei file Master), il server memorizza in anticipo 11 righe rigide da 11 byte per ospitare contatori numerici a 10 cifre (`%010u\n`). Ogni inserimento, avanzamento di stato o eliminazione logica (`DESTROYED`) innesca un salto `fseek` atomico che aggiorna il contatore specifico in RAM e su disco. La dashboard interattiva del dipendente interroga direttamente questi slot pre-ordinati in tempo costante.
+* **Razionale d'Uso:** Per azzerare i tempi di scansione sequenziale su archivi massivi, il server memorizza in anticipo 11 righe rigide da 11 byte per ospitare contatori numerici a 10 cifre (`%010u\n`), regolate dalla macro **`SYSTEM_REG_LINE`**. Ogni inserimento o eliminazione logica (`DESTROYED`) esegue un salto `fseek` atomico che aggiorna il contatore specifico. La cache della BENCH è invece isolata e protetta a **`REPORT_BENCH_LINE` (351 byte)** per non sprecare spazio sul disco e velocizzare l'I/O volatile delle sessioni dei cittadini.
 
 
 

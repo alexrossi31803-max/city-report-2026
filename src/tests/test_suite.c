@@ -118,7 +118,7 @@ void test_report_state_update_and_file_transfer() {
     
     update_report_status(r_test, IN_PROGRESS);    
 
-    char buffer_line[REPORT_LINE_TOTAL + 1];
+    char buffer_line[REPORT_MASTER_LINE + 1];
     report_to_line(buffer_line, r_test, 'A');    
 
     char r_state;
