@@ -2,30 +2,56 @@
 #define REPORT_AVL_H
 
 #include <stdio.h>
-#include "../models/report.h"
+#include <stdbool.h>
+#include "report_list.h"
 
-typedef struct ReportAVL* ReportAVL;
+/* Definizione del tipo enumerativo per le modalita operative */
+typedef enum {
+   TYPE_AVL_UID, /* [user_id(10)][report_id(10)]\n -> 21 byte */
+   TYPE_AVL_RID  /* [report_id(10)][status(1)][row(10)]\n -> 22 byte */
+} Type_Avl;
 
-ReportAVL create_avl();
-void free_avl(ReportAVL t);
+/* Struttura opaca esposta all'esterno */
+typedef struct nodeAVL *ReportAvl;
 
-/**
- * @brief Inserimento bilanciato AVL strutturato sulla chiave univoca report_id.
- * @pre t inizializzato, r istanza di report valida e configurata sul disco.
- */
-void avl_insert_by_report_id(ReportAVL t, unsigned int report_id, Report r);
+/* Funzioni di base richieste dalla specifica */
+ReportAvl createNode(void *elem, Type_Avl type);
+int height(ReportAvl t);
+int size(ReportAvl t);
+int balanceFactor(ReportAvl t);
+void updateHeight(ReportAvl t);
 
-/**
- * @brief Inserimento e aggregazione logaritmica AVL strutturata sulla chiave user_id.
- * @pre t inizializzato, supporta l'accorpamento dinamico di più report_id per cittadino.
- */
-void avl_insert_by_user_id(ReportAVL t, unsigned int user_id, unsigned int report_id);
+/* Rotazioni dell'albero AVL */
+ReportAvl rotateLeft(ReportAvl t);
+ReportAvl rotateRight(ReportAvl t);
+ReportAvl rotateLeftRight(ReportAvl t);
+ReportAvl rotateRightLeft(ReportAvl t);
+ReportAvl rebalance(ReportAvl t);
 
-/**
- * @brief Attraversamento simmetrico In-Order dell'albero con riversamento sul file d'indice binarizzato.
- */
-void avl_write_inorder(ReportAVL t, FILE* f_out, void (*write_func)(FILE*, unsigned int, unsigned int, int, char));
+/* Inserimento bilanciato nell'AVL */
+ReportAvl insert(
+   ReportAvl t,
+   void *elem,
+   Type_Avl type,
+   int (*compare)(const void *, const void *)
+);
+
+/* Visita simmetrica per la persistenza e generazione del file ordinato */
+void inorder(ReportAvl t, FILE *file);
+
+/* Ricerca univoca per REPORT_ID (Restituisce la disk_row memorizzata o -1) */
+int findReportId(unsigned int report_id);
+
+/* Interroga direttamente l'indice User ID su disco (21 byte) tramite Ricerca Binaria */
+int findUserId(
+   unsigned int uid,
+   unsigned int *results
+);
+/* Deallocazione ricorsiva sicura della memoria */
+void free_avl_tree(ReportAvl t);
 
 #endif
+
+
 
 

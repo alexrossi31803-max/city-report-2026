@@ -1,100 +1,55 @@
-# Specifica Formale degli ADT e Operazioni Semantiche (Versione AVL)
+# Panoramica degli Tipi Astratti di Dato (ADT Opachi v5.0 Definitiva)
 
-Questo documento definisce la specifica sintattica e semantica completa di ciascuna operazione fornita dagli ADT creati, nel rispetto del principio dell'Information Hiding e dell'incapsulamento dei tipi.
-
----
-
-## ADT ReportList
-
-### Tipo:
-```c
-typedef struct ReportList* ReportList;
-```
-(Opaque Pointer).
-
-### Operazioni Formali:
-
-#### `ReportList create_list();`
-* **Input:** Nessuno.
-* **Output:** Un’istanza valida di tipo `ReportList`.
-* **Pre-condizioni:** Memoria di sistema disponibile per l'allocazione.
-* **Post-condizioni:** Restituisce un puntatore a una struttura lista inizializzata con dimensione pari a `0` e puntatori di testa e iteratore impostati a `NULL`.
-
-#### `void free_list(ReportList l);`
-* **Input:** La lista `l` da deallocare.
-* **Pre-condizioni:** `l` inizializzato e non NULL.
-* **Post-condizioni:** Tutta la memoria associata ai nodi della lista e alle singole istanze di `Report` contenute viene interamente liberata in RAM.
-
-#### `void list_insert(ReportList l, Report r);`
-* **Input:** La lista `l`, il puntatore all'oggetto `Report r`.
-* **Pre-condizioni:** `l` non deve essere `NULL`, `r` deve essere un'istanza di report valida e non nulla.
-* **Post-condizioni:** `r` viene inserito in testa alla lista come nuovo nodo in tempo costante $O(1)$. La dimensione della lista aumenta di `1`.
+Il sistema adotta una scomposizione modulare rigida basata sullo standard C99. Ogni Tipo Astratto di Dato (ADT) è esposto all'esterno unicamente tramite un **Puntatore Opaco** (*Opaque Pointer*), nascondendo la definizione fisica delle strutture concrete all'interno dei file `.c`. Questo garantisce il principio dell'**Information Hiding**, impedendo alterazioni maliziose della memoria da parte dell'interfaccia utente.
 
 ---
 
-## ADT ReportStack
-
-### Tipo:
-```c
-typedef struct ReportStack* ReportStack;
-```
-(Opaque Pointer).
-
-### Operazioni Formali:
-
-#### `bool stack_push(ReportStack s, Report r);`
-* **Input:** Lo stack `s`, il report corrente `r` da salvare.
-* **Output:** `true` se l'operazione riesce, `false` se lo stack è saturo.
-* **Pre-condizioni:** `s` e `r` validi e non nulli. L'indice di cima `top` deve essere minore di `MAX_STACK - 1` (10).
-* **Post-condizioni:** Effettua una clonazione profonda (deep copy) allocando un nuovo oggetto `Report` copiando tutti i campi aggiornati (ID senza segno e urgenza `char`). Incrementa `top` di `1` e inserisce la copia in cima. Ritorna `true`.
+## 1. ADT ReportList (Linked List Dinamica)
+* **File Header:** `include/adt/report_list.h`
+* **File Sorgente:** `src/adt/report_list.c`
+* **Definizione Fisica:** Struttura concatenata semplice con puntatore di controllo alla testa (`head`), iteratore interno per i cicli (`current`) e variabile pre-calcolata di dimensione (`size`).
+* **Operazioni Chiave:**
+  * `list_insert(ReportList l, Report r)`: Inserimento in testa in tempo costante $\mathcal{O}(1)$.
+  * `list_remove(ReportList l, int report_id)`: Ricerca ed estrazione fisica del nodo in $\mathcal{O}(n)$, con decremento atomico della size.
+  * `list_rewind(ReportList l)` / `list_next(ReportList l)`: Logica nativa dell'iteratore per scorrere sequenzialmente i record in RAM senza esporre i nodi della catena.
 
 ---
 
-## ADT ReportAVL
-
-### Tipo:
-```c
-typedef struct ReportAVL* ReportAVL;
-```
-(Opaque Pointer).
-
-### Operazioni Formali:
-
-#### `ReportAVL create_avl();`
-* **Input:** Nessuno.
-* **Output:** Un'istanza valida di tipo `ReportAVL`.
-* **Pre-condizioni:** Memoria RAM disponibile.
-* **Post-condizioni:** Restituisce un puntatore ad albero bilanciato con radice impostata a `NULL`.
-
-#### `void avl_insert_by_report_id(ReportAVL t, unsigned int report_id, Report r);`
-* **Input:** L'albero `t`, la chiave unica senza segno `report_id`, l'oggetto `Report r`.
-* **Pre-condizioni:** `t` valido, `r` configurato con metadati fisici di riga disco coerenti.
-* **Post-condizioni:** Inserisce un nuovo nodo rispettando la proprietà di ordinamento binario. Se il fattore di bilanciamento $|高度_{sinistra} - 高度_{destra}| > 1$, innesca automaticamente rotazioni singole o doppie (LL, RR, LR, RL) per ripristinare l'equilibrio della radice. Complessità limitata a $O(\log n)$.
-
-#### `void avl_insert_by_user_id(ReportAVL t, unsigned int user_id, unsigned int report_id);`
-* **Input:** L'albero `t`, la chiave di ricerca `user_id`, l'identificatore del report associato.
-* **Pre-condizioni:** `t` inizializzato non NULL.
-* **Post-condizioni:** Se la chiave utente è inedita, alloca un nuovo nodo memorizzando l'ID. Se la chiave collide (utente già presente), espande dinamicamente tramite `realloc` il vettore interno di accumulo, collezionando il nuovo codice in tempo logaritmico.
-
-#### `void avl_write_inorder(ReportAVL t, FILE* f_out, void (*write_func)(FILE*, unsigned int, unsigned int, int, char));`
-* **Input:** L'albero `t`, il file aperto `f_out`, la funzione callback di formattazione `write_func`.
-* **Pre-condizioni:** `t` inizializzato, `f_out` aperto in scrittura binarizzata.
-* **Post-condizioni:** Esegue un attraversamento in ordine simmetrico (Sinistra $\rightarrow$ Radice $\rightarrow$ Destra) e riversa su disco un archivio indici ordinato matematicamente per chiave crescente.
+## 2. ADT ReportStack (Undo Buffer LIFO)
+* **File Header:** `include/adt/report_stack.h`
+* **File Sorgente:** `src/adt/report_stack.c`
+* **Definizione Fisica:** Array statico preallocato limitato a un massimo di 10 slot gestito tramite un indice di cima (`top`).
+* **Operazioni Chiave:**
+  * `stack_push(ReportStack s, Report r)`: Esegue una clonazione profonda (*deep copy*) dell'oggetto Report originario per metterlo al sicuro in RAM, incrementando la cima in $\mathcal{O}(1)$.
+  * `stack_pop(ReportStack s)`: Estrae l'ultimo punto di ripristino per innescare l'azione di *Revert* (annullamento modifiche) del cittadino, decrementando la cima in $\mathcal{O}(1)$.
 
 ---
 
-## ADT PriorityQueue
+## 3. ADT ReportAvl (Albero Auto-Bilanciante Polimorfico)
+* **File Header:** `include/adt/report_avl.h`
+* **File Sorgente:** `src/adt/report_avl.c`
+* **Definizione Fisica:** Nodo bilanciato generico (`NodeAVL`) contenente un elemento puntatore opaco `void *elem`, l'indicatore di altezza (`height`), il contatore di sottoalbero (`size`) e il discriminante enumerato `Type_Avl`.
+* **Operazioni Chiave:**
+  * `insert(ReportAvl t, void *elem, Type_Avl type, int (*compare)(const void *, const void *))`: Inserimento polimorfico regolato da callback esterne. Gestisce i duplicati logici di User ID facendoli scivolare a destra, attivando le rotazioni LL, RR, LR, RL al rilevamento di un *Balance Factor* fuori dal range $[-1, 1]$.
+  * `inorder(ReportAvl t, FILE *file)`: Visita simmetrica profonda che scarica i dati sul disco eliminando ogni spazio spurio, generando gli indici sequenziali ordinati (*Inorder Arrays*) da 21 e 22 byte.
 
-### Tipo:
-```c
-typedef struct PriorityQueue* PriorityQueue;
-```
-(Opaque Pointer).
+---
 
-### Operazioni Formali:
+## 4. ADT PriorityQueue (Coda con Ordinamento Incrociato)
+* **File Header:** `include/adt/priority_queue.h`
+* **File Sorgente:** `src/adt/priority_queue.c`
+* **Definizione Fisica:** Catena di nodi ordinati in RAM durante la fase di inserimento in base a metriche combinate.
+* **Operazioni Chiave:**
+  * `pq_enqueue(PriorityQueue pq, Report r)`: Inserimento a scansione lineare ordinata. Applica la precedenza all'urgenza scalare decrescente ('2' $\rightarrow$ '1' $\rightarrow$ '0') e, in caso di perfetta parità di urgenza, invoca l'helper `compare_dates_fifo` per dare la precedenza alla segnalazione con la stringa temporale della data più remota (regola FIFO).
+  * `pq_dequeue(PriorityQueue pq)`: Estrazione immediata in testa in tempo costante $\mathcal{O}(1)$ della segnalazione a massima criticità comunale assoluta.
 
-#### `void pq_enqueue(PriorityQueue pq, Report r);`
-* **Input:** La coda `pq`, l'oggetto `Report r` da inserire.
-* **Pre-condizioni:** `pq` e `r` validi e non nulli.
-* **Post-condizioni:** Alloca un nodo di giunzione e lo inserisce nella lista interna mantenendola ordinata tramite confronto incrociato stocastico: precedenza assoluta all'urgenza decrescente ('2' -> '1' -> '0') e, a parità, ordinamento FIFO stringa temporale data.
+---
+
+## 5. Motori d'Indice Persistenti su Disco (File Interrogations)
+
+Per massimizzare l'efficienza ed evitare l'occupazione impropria di memoria in RAM sul server municipale, le funzioni di ricerca per chiave **non lavorano sugli alberi residenti in memoria**, ma interrogano direttamente i file d'indice sequenziali ordinati generati dagli AVL tramite algoritmi di scansione hardware:
+
+*   **`findReportId(unsigned int report_id)`**: Apre il file `report_AVL_BY_REPORT_ID.txt`, scansiona le righe a blocchi rigidi da 22 byte e, in caso di match con la sotto-stringa dell'ID, estrae l'indice numerico `disk_row` in tempo logaritmico, chiudendo il descrittore.
+*   **`findUserId(unsigned int uid, unsigned int *results)`**: Apre il file `report_AVL_BY_USER_ID.txt` e legge il contatore di record in $\mathcal{O}(1)$ dal registro centrale. Applica un algoritmo di **Ricerca Binaria (Dicotomica)** saltando geometricamente a passi da 21 byte per localizzare il primo match in $\mathcal{O}(\log n)$. Trovato il punto di contatto, esegue un'espansione bilaterale contigua raccogliendo tutti i duplicati dell'utente all'interno del vettore dinamico di output `results`, restituendo il conteggio dei match.
+
 

@@ -1,51 +1,245 @@
-# Sistema di Gestione delle Segnalazioni Municipali (Architettura AVL)
+# Sistema di Gestione Segnalazioni Municipali - Comune di Baronissi (v5.0)
 
-Un'applicazione avanzata in **C99** progettata per la gestione e il monitoraggio delle segnalazioni di problemi urbani inviate dai cittadini al Comune. Il sistema implementa il principio dell'**Information Hiding** tramite *Opaque Pointers* e simula un database relazionale ad alte prestazioni su file flat binarizzati, garantendo ricerche bilanciate ed inserimenti intelligenti con riciclo dei buchi in tempo costante.
+Ecosistema software modulare sviluppato in standard **C99** per la gestione, lo sfoltimento, l'indicizzazione e il riciclo geometrico delle segnalazioni di anomalia urbana.
 
----
-
-## 1. Architettura di Memoria e Flusso Geometrico dei Dati
-
-Il ciclo di vita di una segnalazione attraversa tre stadi hardware per azzerare i colli di bottiglia causati dalle operazioni di I/O:
-
-1. **Sessione Volatile (RAM):** Accumulo delle segnalazioni in testa a una Linked List in tempo costante $O(1)$. Modifiche isolate tramite uno Stack statico LIFO per consentire operazioni di Undo/Revert profonde. I report nascono con indice riga fisso impostato a `-1`.
-2. **Cache Vettoriale Statica (BENCH):** Al logout, i dati passano nel file a blocchi fissi `reports_bench.txt` (50 slot regolati dalla macro **`REPORT_BENCH_LINE` a 351 byte**). Un contatore traccia la prima riga disponibile. Al riempimento, il contatore si azzera (`counter = 0`), rendendo le celle disponibili ad essere sovrascritte come in un buffer circolare ad alta velocità.
-3. **Database Centralizzato con Inserimento Intelligente (Master Files):** Al flush dei 50 elementi della cache, i record storici modificati vengono eliminati dal vecchio file di stato in **$O(1)$** eseguendo un salto `fseek` immediato sulla riga indicata dal report moltiplicata per **`REPORT_MASTER_LINE` (352 byte)** e settando il flag speciale su `'N'` (Null). Il numero di riga liberato viene inserito in un file ausiliario gestito come uno stack LIFO. Il nuovo record aggiornato viene scritto nel nuovo file di stato occupando il primo buco estratto in tempo costante dallo stack LIFO, iniettando il nuovo numero di riga fisica nel report.
----
-
-## 2. Strutture Dati Astratte (ADT) e Sincronizzazione Indici
-
-Al termine del flush della BENCH, il server rigenera da zero i file d'indice estratti in modalità ordinata *In-Order*:
-
-* **`report_AVL_BY_REPORT_ID.txt` [O(log n)]:** Albero organizzato secondo la chiave `report_id`. È il vero Punto di Verità dello stato dei dati. Il dipendente vi effettua ricerche e modifiche istantanee in tempo logaritmico garantito dalle rotazioni di bilanciamento.
-* **`report_AVL_BY_USER_ID.txt` [O(log n)]:** Albero organizzato secondo la chiave `user_id`. I nodi contengono vettori dinamici ad accumulo locale per raccogliere più segnalazioni inviate dallo stesso cittadino.
-* **`reports_by_priority.txt` [O(1)]:** Coda a priorità ad ordinamento incrociato (Urgenza decrescente + Data FIFO più vecchia). Trattandosi di un'operazione costosa, viene compilata **solo sotto esplicita richiesta del dipendente**, eseguendo un flush forzato della cache e scansionando i file master attivi.
+L'architettura simula un **Database Relazionale a geometria rigida** basato su file piatti di testo, escludendo qualsiasi degradamento prestazionale indotto da scansioni orizzontali in `O(n)` sugli archivi storici e implementando un totale isolamento dei dati tramite **Opaque Pointers (Information Hiding)**.
 
 ---
 
-## 3. Indicatori Statistici Istantanei O(1)
+#  Caratteristiche Tecniche Principali
 
-A differenza dei sistemi tradizionali, la generazione del report comunale non esegue scansioni sequenziali orizzontali distruttive sugli archivi storici. Il server aggiorna atomicamente 11 righe fisse a 11 byte nel file `system_total_report.txt` ad ogni cambio di stato o inserimento. La dashboard del dipendente esegue letture mirate tramite `fseek` visualizzando all'istante l'anagrafica statistica del Comune.
+## Persistenza Hardware ad Asimmetria Fisica
+
+- Separazione netta tra:
+  - cache operativa volatile → **351 byte**
+  - archivio Master stazionario → **352 byte**
+- Presenza del flag di attivazione cella al byte offset `350`
 
 ---
 
-## 4. Compilazione ed Esecuzione Manuale tramite GCC
+## Algoritmo di Riciclo Chirurgico dei Buchi in `O(1)`
 
-Il progetto è strutturato per essere compilato in modo modulare separato. 
+- I record modificati o rimossi generano celle vuote marcate `'N'`
+- Gli indici fisici vengono salvati in uno:
+  - **Stack LIFO** ausiliario
+- Il server può:
+  - sovrascrivere i buchi
+  - riutilizzare gli slot
+  - evitare scansioni orizzontali
 
-### Comando di Compilazione Unificato
+Prestazione:
+```text
+Tempo costante O(1)
+```
+
+---
+
+## Ricerca Dicotomica su File d'Indice in `O(log n)`
+
+Gli indici prodotti dagli AVL auto-bilancianti vengono salvati come:
+
+- `Inorder Arrays`
+- sequenze continue su disco
+
+Ricerca eseguita tramite:
+
+- salti dicotomici
+- accesso diretto ai file indice
+
+Geometrie:
+
+| File indice | Dimensione Riga |
+|---|---|
+| User ID | 21 byte |
+| Report ID | 22 byte |
+
+---
+
+## Dashboard Statistica Atomica in `O(1)`
+
+Registro centrale statico:
+
+- 11 byte per riga
+- 13 indicatori di sistema
+
+Traccia:
+
+- ID progressivo
+- saturazione cache
+- contatori per stato
+- contatori per categoria
+- consistenza AVL
+
+Prestazione:
+
+```text
+Rendering istantaneo O(1)
+```
+
+---
+
+# 📂 Organizzazione dei File e Geometrie Rigide
+
+```text
+database/
+├── Master_Files/
+│   ├── users.txt
+│   │   └── Anagrafica Utenti (107 byte fissi)
+│   │
+│   ├── users_idx.txt
+│   │   └── Indice Hash Utenti (6 byte fissi)
+│   │
+│   ├── open_reports.txt
+│   │   └── Master Segnalazioni Aperte (352 byte)
+│   │
+│   ├── in_progress_reports.txt
+│   │   └── Master Segnalazioni in Lavorazione (352 byte)
+│   │
+│   ├── closed_reports.txt
+│   │   └── Master Segnalazioni Chiuse (352 byte)
+│   │
+│   ├── open_holes.txt
+│   │   └── Stack LIFO Buchi Open (11 byte)
+│   │
+│   ├── in_progress_holes.txt
+│   │   └── Stack LIFO Buchi Progress (11 byte)
+│   │
+│   ├── closed_holes.txt
+│   │   └── Stack LIFO Buchi Closed (11 byte)
+│   │
+│   └── system_total_report.txt
+│       └── Registro Statistico Centrale (13 righe da 11 byte)
+│
+└── Derived_Files/
+    ├── reports_bench.txt
+    │   └── Cache Operativa Server (50 slot da 351 byte)
+    │
+    ├── report_AVL_BY_REPORT_ID.txt
+    │   └── Indice Ordinato per Report ID (22 byte)
+    │
+    └── report_AVL_BY_USER_ID.txt
+        └── Indice Ordinato per User ID (21 byte)
+```
+
+---
+
+#  Architettura della Memoria a Tre Livelli
+
+## 1. RAM Volatile di Sessione (Cittadino)
+
+Gestita tramite:
+
+- `ReportList`
+  - lista concatenata semplice
+  - inserimento in testa
+
+- `ReportStack`
+  - array statico
+  - undo profondo
+  - massimo 10 elementi
+
+Le modifiche RAM avvengono solo sui report:
+
+```text
+OPEN
+```
+
+---
+
+## 2. Cache Vettoriale Statica (BENCH)
+
+Al logout:
+
+- i record vengono riversati in:
+  - `reports_bench.txt`
+
+Geometria:
+
+```text
+351 byte per slot
+```
+
+Comportamento:
+
+- se il report esiste:
+  - la cella viene riscritta sul posto
+- gli incrementi anagrafici vengono azzerati
+
+Al raggiungimento di:
+
+```text
+50 slot
+```
+
+si attiva automaticamente:
+
+```text
+Flush Pesante
+```
+
+---
+
+## 3. Database Master e Rigenerazione Indici
+
+Il flush:
+
+- smista i record validi nei Master
+- ricicla i buchi tramite Stack LIFO
+- elimina fisicamente i record `DESTROYED`
+
+Successivamente:
+
+- il server rilegge i Master
+- rigenera gli indici AVL
+- esegue visite:
+  - simmetriche
+  - `In-Order`
+
+Aggiorna inoltre:
+
+- contatori posizionali
+- metadati statistici
+
+---
+
+# 🛠️ Compilazione ed Esecuzione
+
+Il progetto adotta:
+
+- architettura modulare
+- standard rigoroso C99
+- nessuna dipendenza esterna
+
+## Compilazione
+
 ```bash
 gcc -Wall -Wextra -pedantic -std=c99 -Iinclude src/main.c src/models/user.c src/models/report.c src/adt/report_list.c src/adt/report_stack.c src/adt/report_avl.c src/adt/priority_queue.c src/utils/validators.c src/utils/parser.c src/server/user_manager.c src/server/report_manager.c src/tests/test_suite.c -o segnalazioni_municipali.exe
 ```
 
-### Avvio dell'Applicazione
-Linux/macOS:
+---
+
+## Esecuzione Interattiva
+
 ```bash
 ./segnalazioni_municipali.exe
 ```
 
-Windows:
-```bash
-segnalazioni_municipali.exe
-```
+---
+
+## Validazione del Sistema
+
+Per validare:
+
+- integrità logica
+- consistenza hardware
+- correttezza asintotica
+- strutture dati
+- pipeline AVL
+- riciclo geometrico
+
+eseguire la suite di test integrata.
+
+---
+
+
 

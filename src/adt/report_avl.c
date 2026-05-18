@@ -1,219 +1,341 @@
 #include "../../include/adt/report_avl.h"
+#include "../../include/config.h"
+#include "../../include/utils/parser.h"
 #include <stdlib.h>
+#include <string.h>
 
-typedef struct AVLNode {
-    unsigned int key;              // Contiene report_id o user_id
-    unsigned int* report_ids;      // Vettore dinamico per supportare più segnalazioni per User ID
-    int num_reports;
-    int disk_row;                  // Mappatura fisica se usato come indice report
-    char status_val;               // Stato salvato compresso
-    int height;
-    struct AVLNode* left;
-    struct AVLNode* right;
-} AVLNode;
+/* ==============================================================================
+ *  STRUTTURA INTERNA DEL NODO AVL (CONFORME AL PROMPT DEFINITIVO)
+ * ============================================================================== */
+typedef struct nodeAVL {
+   void *elem;          /* Puntatore generico alla stringa record allocata in RAM */
+   Type_Avl type;       /* Discriminante per stabilire se si tratta di UID o RID */
 
-struct ReportAVL {
-    AVLNode* root;
-};
+   int height;          /* Altezza del nodo: fondamentale per calcolare il Balance Factor */
+   int size;            /* Numero totale di nodi nel sottoalbero radicato qui (per il file system) */
 
-ReportAVL create_avl() {
-    ReportAVL t = (ReportAVL)malloc(sizeof(struct ReportAVL));
-    if (t) t->root = NULL;
-    return t;
+   struct nodeAVL *left;  /* Puntatore al figlio sinistro (chiavi minori) */
+   struct nodeAVL *right; /* Puntatore al figlio destro (chiavi maggiori o uguali) */
+} NodeAVL;
+
+/* ==============================================================================
+ *  FUNZIONI HELPER STATICHE PER ESTRAZIONE CHIAVI (GEOMETRIA STRINGHE SENZA SPAZI)
+ * ============================================================================== */
+
+/**
+ * @brief Estrae l'User ID convertendo i primi 10 caratteri della stringa UID.
+ * Geometria: [USER_ID(10)][REPORT_ID(10)]\n
+ */
+static unsigned int get_user_id_from_uid_line(const char *elem) {
+    char tmp[11] = {0};
+    memcpy(tmp, elem, 10);
+    return (unsigned int)strtoul(tmp, NULL, 10);
 }
 
-static int get_height(AVLNode* n) {
-    return n ? n->height : 0;
+
+/**
+ * @brief Estrae il Report ID convertendo i secondi 10 caratteri della stringa UID.
+ * Geometria: [USER_ID(10)][REPORT_ID(10)]\n
+ */
+static unsigned int get_report_id_from_uid(const char *elem) {
+    char tmp[11] = {0};
+    memcpy(tmp, elem + 10, 10); /* Salto di 10 byte per isolare il Report ID */
+    return (unsigned int)strtoul(tmp, NULL, 10);
 }
 
-static int get_balance(AVLNode* n) {
-    return n ? get_height(n->left) - get_height(n->right) : 0;
+
+/* ==============================================================================
+ *  FUNZIONI DI GESTIONE METRICHE E MEMORIA DELLA STRUTTURA AVL
+ * ============================================================================== */
+
+ReportAvl createNode(void *elem, Type_Avl type) {
+    ReportAvl n = (ReportAvl)malloc(sizeof(NodeAVL));
+    if (!n) return NULL;
+
+    /* Determina la lunghezza fissa esatta in base al tipo (21 o 22 byte) */
+    int len = (type == TYPE_AVL_UID) ? 21 : 22;
+    
+    /* Allocazione dello spazio per la stringa più il terminatore di sicurezza '\0' */
+    n->elem = malloc(len + 1);
+    if (!n->elem) {
+        free(n);
+        return NULL;
+    }
+    
+    /* Hard copy bloccata della stringa grezza passata come void* */
+    memcpy(n->elem, (const char *)elem, len);
+    ((char *)n->elem)[len] = '\0'; /* Sigillo di chiusura stringa in RAM */
+
+    n->type = type;
+    n->height = 1; /* Un nuovo nodo nasce come foglia, quindi altezza iniziale = 1 */
+    n->size = 1;   /* Inizialmente il sottoalbero contiene solo se stesso */
+    n->left = n->right = NULL;
+    return n;
+}
+
+int height(ReportAvl t) {
+    return t ? t->height : 0; /* Un sottoalbero vuoto (NULL) ha altezza 0 */
+}
+
+int size(ReportAvl t) {
+    return t ? t->size : 0; /* Un sottoalbero vuoto (NULL) contiene 0 nodi */
+}
+
+int balanceFactor(ReportAvl t) {
+    /* Balance Factor = Altezza Sottoalbero Sinistro - Altezza Sottoalbero Destro */
+    return t ? height(t->left) - height(t->right) : 0;
 }
 
 static int max_val(int a, int b) {
     return (a > b) ? a : b;
 }
 
-static AVLNode* create_node(unsigned int key) {
-    AVLNode* n = (AVLNode*)malloc(sizeof(AVLNode));
-    if (!n) return NULL;
-    n->key = key;
-    n->report_ids = NULL;
-    n->num_reports = 0;
-    n->disk_row = -1;
-    n->status_val = '0';
-    n->height = 1;
-    n->left = n->right = NULL;
-    return n;
-}
-
-static void free_avl_nodes(AVLNode* n) {
-    if (!n) return;
-    free_avl_nodes(n->left);
-    free_avl_nodes(n->right);
-    if (n->report_ids) free(n->report_ids);
-    free(n);
-}
-
-void free_avl(ReportAVL t) {
+void updateHeight(ReportAvl t) {
     if (t) {
-        free_avl_nodes(t->root);
-        free(t);
+        /* L'altezza è 1 + il massimo tra le altezze dei due figli intermedi */
+        t->height = 1 + max_val(height(t->left), height(t->right));
+        /* La size del sottoalbero è 1 + la somma dei nodi a sinistra e a destra */
+        t->size = 1 + size(t->left) + size(t->right);
     }
 }
 
-/* Rotazione Destra (Caso Sinistra-Sinistra LL) */
-static AVLNode* rotate_right(AVLNode* y) {
-    AVLNode* x = y->left;
-    AVLNode* T2 = x->right;
+/* ==============================================================================
+ *  ROTAZIONI DI BILANCIAMENTO MATEMATICO AVL
+ * ============================================================================== */
 
-    x->right = y;
-    y->left = T2;
+ReportAvl rotateLeft(ReportAvl t) {
+    /* Il figlio destro diventa la nuova radice del sottoalbero */
+    ReportAvl y = t->right;
+    ReportAvl T2 = y->left;
 
-    y->height = max_val(get_height(y->left), get_height(y->right)) + 1;
-    x->height = max_val(get_height(x->left), get_height(x->right)) + 1;
+    /* Sostituzione geometrica dei puntatori */
+    y->left = t;
+    t->right = T2;
 
-    return x;
+    /* Ricalcolo rigoroso delle altezze partendo dal nodo sceso in basso */
+    updateHeight(t);
+    updateHeight(y);
+
+    return y; /* Ritorna la nuova radice bilanciata */
 }
 
-/* Rotazione Sinistra (Caso Destra-Destra RR) */
-static AVLNode* rotate_left(AVLNode* x) {
-    AVLNode* y = x->right;
-    AVLNode* T2 = y->left;
+ReportAvl rotateRight(ReportAvl t) {
+    /* Il figlio sinistro diventa la nuova radice del sottoalbero */
+    ReportAvl x = t->left;
+    ReportAvl T2 = x->right;
 
-    y->left = x;
-    x->right = T2;
+    /* Sostituzione geometrica dei puntatori */
+    x->right = t;
+    t->left = T2;
 
-    x->height = max_val(get_height(x->left), get_height(x->right)) + 1;
-    y->height = max_val(get_height(y->left), get_height(y->right)) + 1;
+    /* Ricalcolo rigoroso delle altezze partendo dal nodo sceso in basso */
+    updateHeight(t);
+    updateHeight(x);
 
-    return y;
+    return x; /* Ritorna la nuova radice bilanciata */
 }
 
-/* Funzione ricorsiva di inserimento e bilanciamento AVL per Report ID */
-static AVLNode* insert_rep_node(AVLNode* node, unsigned int report_id, Report r, bool* inserted) {
-    if (!node) {
-        AVLNode* n = create_node(report_id);
-        if (n) {
-            n->disk_row = get_report_disk_row(r);
-            n->status_val = (char)get_report_status(r) + '0';
+ReportAvl rotateLeftRight(ReportAvl t) {
+    /* Caso LR: Rotazione sinistra sul figlio sinistro, seguita da rotazione destra sul padre */
+    t->left = rotateLeft(t->left);
+    return rotateRight(t);
+}
+
+ReportAvl rotateRightLeft(ReportAvl t) {
+    /* Caso RL: Rotazione destra sul figlio destro, seguita da rotazione sinistra sul padre */
+    t->right = rotateRight(t->right);
+    return rotateLeft(t);
+}
+
+ReportAvl rebalance(ReportAvl t) {
+    if (!t) return NULL;
+    
+    /* Aggiorna le metriche del nodo corrente prima di ispezionare il fattore di forma */
+    updateHeight(t);
+    int balance = balanceFactor(t);
+
+    /* CASO 1: Sbilanciamento a Sinistra (BF > 1) */
+    if (balance > 1) {
+        if (balanceFactor(t->left) >= 0) {
+            return rotateRight(t); /* Sotto-caso Sinistra-Sinistra: Rotazione Singola (LL) */
+        } else {
+            return rotateLeftRight(t); /* Sotto-caso Sinistra-Destra: Rotazione Doppia (LR) */
         }
-        *inserted = true;
-        return n;
     }
-
-    if (report_id < node->key) {
-        node->left = insert_rep_node(node->left, report_id, r, inserted);
-    } else if (report_id > node->key) {
-        node->right = insert_rep_node(node->right, report_id, r, inserted);
-    } else {
-        node->disk_row = get_report_disk_row(r);
-        node->status_val = (char)get_report_status(r) + '0';
-        return node;
+    
+    /* CASO 2: Sbilanciamento a Destra (BF < -1) */
+    if (balance < -1) {
+        if (balanceFactor(t->right) <= 0) {
+            return rotateLeft(t); /* Sotto-caso Destra-Destra: Rotazione Singola (RR) */
+        } else {
+            return rotateRightLeft(t); /* Sotto-caso Destra-Sinistra: Rotazione Doppia (RL) */
+        }
     }
-
-    node->height = 1 + max_val(get_height(node->left), get_height(node->right));
-    int balance = get_balance(node);
-
-    if (balance > 1 && report_id < node->left->key)
-        return rotate_right(node);
-
-    if (balance < -1 && report_id > node->right->key)
-        return rotate_left(node);
-
-    if (balance > 1 && report_id > node->left->key) {
-        node->left = rotate_left(node->left);
-        return rotate_right(node);
-    }
-
-    if (balance < -1 && report_id < node->right->key) {
-        node->right = rotate_right(node->right);
-        return rotate_left(node);
-    }
-
-    return node;
+    return t; /* Il nodo è già bilanciato, lo restituisce immutato */
 }
 
-void avl_insert_by_report_id(ReportAVL t, unsigned int report_id, Report r) {
+/* ==============================================================================
+ *  MOTORE DI INSERIMENTO COMPATIBILE CON DUPLICATI LOGICI (UID)
+ * ============================================================================== */
+
+ReportAvl insert(
+   ReportAvl t,
+   void *elem,
+   Type_Avl type,
+   int (*compare)(const void *, const void *)
+) {
+    /* Se raggiungiamo una foglia vuota, allochiamo dinamicamente il nodo ed eseguiamo l'hard copy */
+    if (!t) return createNode(elem, type);
+
+    /* Invocazione del puntatore a funzione per confrontare polimorficamente i record */
+    int comp_res = compare(elem, t->elem);
+
+    if (comp_res < 0) {
+        t->left = insert(t->left, elem, type, compare);
+    } else {
+        /* REGOLA SPERIMENTALE: I duplicati logici (stesso user_id) scivolano stagna a destra */
+        t->right = insert(t->right, elem, type, compare);
+    }
+
+    /* Risalita ricorsiva con esecuzione del rebalance automatico su tutti i nodi antenati */
+    return rebalance(t);
+}
+
+/* ==============================================================================
+ *  VISITA INORDER PER LA GENERAZIONE DEL FILE SEQUENZIALE PERSISTENTE
+ * ============================================================================== */
+
+void inorder(ReportAvl t, FILE *file) {
+    if (!t || !file) return;
+    
+    /* Algoritmo Inorder: Sottoalbero Sinistro -> Nodo Corrente -> Sottoalbero Destro */
+    inorder(t->left, file);
+    
+    int len = (t->type == TYPE_AVL_UID) ? 21 : 22;
+    /* Scrittura binaria massiva sul file flat senza l'aggiunta di spazi spuri */
+    fwrite(t->elem, sizeof(char), len, file);
+    
+    inorder(t->right, file);
+}
+
+/* ==============================================================================
+ *  MOTORI DI RICERCA INTERNA (FIND COERENTE CON IL TIPO SPECIFICO)
+ * ============================================================================== */
+
+int findReportId(unsigned int report_id) {
+    FILE* f = fopen(PATH_AVL_REPORT_ID, "rb");
+    if (!f) return -1;
+
+    char line_buf[AVL_REPORT_ID_LINE];
+    /* Scansione diretta del file d'indice inorder sequenziale a blocchi fissi */
+    while (fread(line_buf, sizeof(char), AVL_REPORT_ID_LINE, f) == AVL_REPORT_ID_LINE) {
+        line_buf[AVL_REPORT_ID_LINE] = '\n';
+        
+        char raw_rid[11] = {0};
+        char raw_row[11] = {0};
+        
+        memcpy(raw_rid, line_buf, 10);
+        memcpy(raw_row, line_buf + 11, 10);
+        
+        unsigned int curr_id = (unsigned int)strtoul(raw_rid, NULL, 10);
+        
+        /* Se l'ID corrisponde, estrae immediatamente l'indice fisico disk_row */
+        if (curr_id == report_id) {
+            int disk_row = atoi(raw_row);
+            fclose(f);
+            return disk_row;
+        }
+    }
+    fclose(f);
+    return -1; /* Chiave non trovata nell'indice del disco */
+}
+
+
+int findUserId(unsigned int uid, unsigned int *results) {
+    /* LETTURA IN O(1) DEL NUMERO DI RECORD DAL REGISTRO CENTRALIZZATO */
+    int total_records = (int)read_system_variable(REG_IDX_AVL_USR_COUNT);
+    if (total_records == 0) return 0;
+
+    FILE* f = fopen(PATH_AVL_USER_ID, "rb");
+    if (!f) return 0;
+
+    int low = 0;
+    int high = total_records - 1;
+    int match_index = -1;
+    char line_buffer[AVL_USER_ID_LINE + 1];
+
+    /* 1. RICERCA BINARIA LOGARITMICA O(log n) SULL'ARRAY INORDER SU DISCO SU FILE DA 21 BYTE */
+    while (low <= high) {
+        int mid = low + (high - low) / 2;
+        fseek(f, (long)mid * AVL_USER_ID_LINE, SEEK_SET);
+        if (fread(line_buffer, sizeof(char), AVL_USER_ID_LINE, f) != AVL_USER_ID_LINE) break;
+        line_buffer[AVL_USER_ID_LINE] = '\0';
+
+        /* ADATTAMENTO: Richiamo del nome univoco get_user_id_from_uid_line per azzerare i conflitti con user.h */
+        unsigned int curr_uid = get_user_id_from_uid_line(line_buffer);
+
+        if (curr_uid == uid) {
+            match_index = mid; /* Primo punto di contatto localizzato */
+            break; 
+        } else if (curr_uid < uid) {
+            low = mid + 1;
+        } else {
+            high = mid - 1;
+        }
+    }
+
+    /* Se l'User ID cercato non compare in nessuna cella dell'indice */
+    if (match_index == -1) {
+        fclose(f);
+        return 0;
+    }
+
+    int match_counter = 0;
+
+    /* 2. ESPANSIONE A SINISTRA: Individua l'inizio del blocco di duplicati contigui */
+    int scan_left = match_index;
+    while (scan_left >= 0) {
+        fseek(f, (long)scan_left * AVL_USER_ID_LINE, SEEK_SET);
+        if (fread(line_buffer, sizeof(char), AVL_USER_ID_LINE, f) != AVL_USER_ID_LINE) break;
+        line_buffer[AVL_USER_ID_LINE] = '\0';
+
+        /* ADATTAMENTO: Sincronizzazione con il nome della funzione helper interna univoca */
+        if (get_user_id_from_uid_line(line_buffer) != uid) {
+            break; /* Si ferma non appena l'User ID cambia nel file ordinato */
+        }
+        scan_left--;
+    }
+    
+    /* Imposta il punto di partenza della raccolta subito dopo l'ultimo estraneo trovato */
+    int start_scan = scan_left + 1;
+
+    /* 3. RACCOLTA SEQUENZIALE DA SINISTRA VERSO DESTRA DI TUTTI I REPORT ID ACCOPPIATI */
+    while (start_scan < total_records) {
+        fseek(f, (long)start_scan * AVL_USER_ID_LINE, SEEK_SET);
+        if (fread(line_buffer, sizeof(char), AVL_USER_ID_LINE, f) != AVL_USER_ID_LINE) break;
+        line_buffer[AVL_USER_ID_LINE] = '\0';
+
+        /* ADATTAMENTO: Sincronizzazione con il nome della funzione helper interna univoca */
+        if (get_user_id_from_uid_line(line_buffer) != uid) {
+            break; /* Termina la raccolta non appena usciamo dall'intervallo dell'utente */
+        }
+
+        /* Estrae il report_id associato e lo deposita direttamente nel vettore di output results */
+        results[match_counter] = get_report_id_from_uid(line_buffer);
+        match_counter++;
+        start_scan++;
+    }
+
+    fclose(f);
+    return match_counter; /* Restituisce il numero totale di segnalazioni storiche isolate */
+}
+
+
+
+void free_avl_tree(ReportAvl t) {
     if (!t) return;
-    bool inserted = false;
-    t->root = insert_rep_node(t->root, report_id, r, &inserted);
+    free_avl_tree(t->left);
+    free_avl_tree(t->right);
+    if (t->elem) free(t->elem); /* Deallocazione hard copy stringa interna */
+    free(t);                    /* Deallocazione del nodo strutturale */
 }
-
-/* Funzione ricorsiva di inserimento e bilanciamento AVL per User ID con aggregazione locale multipla */
-static AVLNode* insert_user_node(AVLNode* node, unsigned int user_id, unsigned int report_id) {
-    if (!node) {
-        AVLNode* n = create_node(user_id);
-        if (n) {
-            n->num_reports = 1;
-            n->report_ids = (unsigned int*)malloc(sizeof(unsigned int));
-            if (n->report_ids) n->report_ids[0] = report_id;
-        }
-        return n;
-    }
-
-    if (user_id < node->key) {
-        node->left = insert_user_node(node->left, user_id, report_id);
-    } else if (user_id > node->key) {
-        node->right = insert_user_node(node->right, user_id, report_id);
-    } else {
-        int exists = 0;
-        for (int i = 0; i < node->num_reports; i++) {
-            if (node->report_ids[i] == report_id) { exists = 1; break; }
-        }
-        if (!exists) {
-            node->num_reports++;
-            unsigned int* temp = (unsigned int*)realloc(node->report_ids, node->num_reports * sizeof(unsigned int));
-            if (temp) {
-                node->report_ids = temp;
-                node->report_ids[node->num_reports - 1] = report_id;
-            }
-        }
-        return node;
-    }
-
-    node->height = 1 + max_val(get_height(node->left), get_height(node->right));
-    int balance = get_balance(node);
-
-    if (balance > 1 && user_id < node->left->key)
-        return rotate_right(node);
-
-    if (balance < -1 && user_id > node->right->key)
-        return rotate_left(node);
-
-    if (balance > 1 && user_id > node->left->key) {
-        node->left = rotate_left(node->left);
-        return rotate_right(node);
-    }
-
-    if (balance < -1 && user_id < node->right->key) {
-        node->right = rotate_right(node->right);
-        return rotate_left(node);
-    }
-
-    return node;
-}
-
-void avl_insert_by_user_id(ReportAVL t, unsigned int user_id, unsigned int report_id) {
-    if (t) t->root = insert_user_node(t->root, user_id, report_id);
-}
-
-static void inorder_traversal(AVLNode* n, FILE* f, void (*write_func)(FILE*, unsigned int, unsigned int, int, char)) {
-    if (!n) return;
-    inorder_traversal(n->left, f, write_func);
-    
-    if (n->report_ids != NULL) {
-        for (int i = 0; i < n->num_reports; i++) {
-            write_func(f, n->key, n->report_ids[i], -1, '0');
-        }
-    } else {
-        write_func(f, n->key, 0, n->disk_row, n->status_val);
-    }
-    
-    inorder_traversal(n->right, f, write_func);
-}
-
-void avl_write_inorder(ReportAVL t, FILE* f_out, void (*write_func)(FILE*, unsigned int, unsigned int, int, char)) {
-    if (t && f_out && write_func) inorder_traversal(t->root, f_out, write_func);
-}
-

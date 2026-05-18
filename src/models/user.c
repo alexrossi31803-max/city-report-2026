@@ -2,58 +2,62 @@
 #include <stdlib.h>
 #include <string.h>
 
-struct User {
-    int id;
-    char username[MAX_USERNAME];
-    char password[MAX_PASSWORD];
-    UserRole role;
+/**
+ * @brief Struttura interna dell'oggetto User (Definizione fisica nascosta).
+ *        L'allocazione statica interna delle stringhe impedisce frammentazione della RAM.
+ */
+struct UserStruct {
+    int id;                       /* L'indice progressivo geometrico sul finto database */
+    char username[MAX_USERNAME + 1];  /* Array statico protetto dimensionato da config.h più \0 */
+    char password[MAX_PASSWORD + 1];  /* Array statico protetto dimensionato da config.h più \0 */
+    UserRole role;                /* Ruolo istituzionale (EMPLOYEE o CITIZEN) */
 };
 
 User create_user(int id, const char* username, const char* password, UserRole role) {
-    User u = (User)malloc(sizeof(struct User));
-    if (u == NULL) return NULL;
+    /* Allocazione dinamica protetta dello spazio della struttura privata in RAM */
+    User u = (User)malloc(sizeof(struct UserStruct));
+    if (!u) return NULL; /* Ritorno preventivo di sicurezza in caso di crash della memoria */
 
     u->id = id;
     
-    memset(u->username, 0, MAX_USERNAME);
-    memset(u->password, 0, MAX_PASSWORD);
-
-    if (username) strncpy(u->username, username, MAX_USERNAME - 1);
-    if (password) strncpy(u->password, password, MAX_PASSWORD - 1);
+    /* Hard copy bloccata delle stringhe per isolare l'oggetto da vettori volatili dell'interfaccia */
+    strncpy(u->username, username, MAX_USERNAME);
+    u->username[MAX_USERNAME] = '\0'; /* Sigillo obbligatorio del terminatore di stringa */
     
-    u->role = role;
+    strncpy(u->password, password, MAX_PASSWORD);
+    u->password[MAX_PASSWORD] = '\0';
 
-    return u;
+    u->role = role;
+    return u; /* Restituisce il puntatore alla cella di memoria opaca */
 }
 
 void free_user(User u) {
+    /* Previene tentativi di doppia deallocazione distruttiva della memoria (Double Free) */
     if (u != NULL) {
-        free(u);
+        free(u); /* Libera l'intero blocco strutturale allocato dal costruttore */
     }
 }
 
-const char* get_role_string(UserRole role) {
-    if (role == EMPLOYEE) return "Dipendente Comunale";
-    return "Cittadino";
+/* --------------------------------==============================================
+ *  IMPLEMENTAZIONE DEI METODI GETTER (PROTEZIONE INCAPSULAMENTO)
+ * --------------------------------============================================== */
+
+int get_user_id(User u) {
+    /* Restituisce la copia del valore isolando la variabile d'istanza privata */
+    return u ? u->id : -1;
 }
 
-int get_user_id(User User) {
-    if (User == NULL) return -1;
-    return User->id;
+const char* get_user_username(User u) {
+    /* Restituisce il puntatore costante in sola lettura impedendo alterazioni esterne maliziose */
+    return u ? u->username : NULL;
 }
 
-const char* get_user_username(User User) {
-    if (User == NULL) return "";
-    return User->username;
+const char* get_user_password(User u) {
+    return u ? u->password : NULL;
 }
 
-const char* get_user_password(User User) {
-    if (User == NULL) return "";
-    return User->password;
+UserRole get_user_role(User u) {
+    return u ? u->role : CITIZEN;
 }
 
-UserRole get_user_role(User User) {
-    if (User == NULL) return CITIZEN; 
-    return User->role;
-}
 

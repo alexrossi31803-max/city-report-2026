@@ -2,18 +2,29 @@
 #define VALIDATORS_H
 
 #include <stdbool.h>
-#include "../config.h"
 
-// Verifica che una stringa non sia vuota o composta solo da spazi
+/**
+ * @brief Verifica che una stringa non sia vuota o composta da soli spazi.
+ *        Indispensabile per impedire descrizioni o username nulli.
+ * @param str La stringa da sottoporre a verifica in RAM.
+ * @return true se la stringa contiene almeno un carattere valido, false altrimenti.
+ */
 bool validate_not_empty(const char* str);
 
-// Verifica la lunghezza massima di una stringa (incluso il terminatore)
-bool validate_length(const char* str, int max_len);
+/**
+ * @brief Valida formalmente il formato stringa di una data (Formato richiesto: GG/MM/AAAA).
+ *        Esegue un controllo sintattico sui separatori ed uno semantico sui range di giorni e mesi.
+ * @param date_str La stringa temporale da validare.
+ * @return true se la data rispetta rigorosamente i vincoli del calendario, false altrimenti.
+ */
+bool validate_date_format(const char* date_str);
 
-// Verifica il formato strutturale e logico della data "GG/MM/AAAA"
-bool validate_date_format(const char* date);
-
-// Verifica che il livello di urgenza numerico immesso sia nel range dei caratteri validi
-bool validate_urgency_range(char urgency);
+/**
+ * @brief Valida che il carattere di urgenza sia confinato nel range scalare ammesso.
+ *        Range accettato: '0' (Bassa), '1' (Media), '2' (Alta).
+ * @param urgency_char Il carattere inviato dall'interfaccia utente.
+ * @return true se il carattere è valido, false in caso di violazione dei vincoli.
+ */
+bool validate_urgency_range(char urgency_char);
 
 #endif

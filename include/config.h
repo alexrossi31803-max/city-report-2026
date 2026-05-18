@@ -21,12 +21,16 @@
    - REPORT_BENCH_LINE: 350 byte di record + 1 byte di newline = 351 byte
    - REPORT_MASTER_LINE: 350 byte di record + 1 byte di flag + 1 byte di newline = 352 byte
    - SYSTEM_REG_LINE: Ogni riga del registro centrale occupa stabilmente 11 byte: %010u\n
+   - AVL_REPORT_ID_LINE: 10(ID) + 1(status) + 10(row) + 1(\n) = 22 byte
+   - AVL_USER_ID_LINE: 10(USER_ID) + 10(REPORT_ID) + 1(\n) = 21 byte
 */
 #define USER_LINE_TOTAL 107   
 #define USER_IDX_LINE 6
 #define REPORT_BENCH_LINE 351
 #define REPORT_MASTER_LINE 352 
-#define SYSTEM_REG_LINE 11    
+#define SYSTEM_REG_LINE 11
+#define AVL_REPORT_ID_LINE 22
+#define AVL_USER_ID_LINE 21
 
 /* Mappa dei Percorsi Database Binarizzati */
 #define PATH_USERS "database/Master_Files/users.txt"
@@ -59,6 +63,9 @@
 #define REG_IDX_CAT_WASTE        8  /* Totale anomalie rifiuti */
 #define REG_IDX_CAT_INFRASTRUCT  9  /* Totale anomalie impianti pubblici */
 #define REG_IDX_CAT_OTHER        10 /* Totale anomalie generiche */
+#define REG_IDX_AVL_REP_COUNT    11 /* Numero di nodi/righe in AVL Report ID */
+#define REG_IDX_AVL_USR_COUNT    12 /* Numero di nodi/righe in AVL User ID */
+
 
 typedef enum {
     OPEN,

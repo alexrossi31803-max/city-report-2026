@@ -1,45 +1,57 @@
-# Analisi Ingegneristica e Scelte Algoritmiche (Versione AVL & Registri O(1))
+# Analisi dei Requisiti e Complessità Computazionale (v5.0 Definitiva)
 
-Questo documento descrive il razionale algoritmico e le complessità computazionali delle nuove strutture dati, dimostrando la conformità ai requisiti stringenti della traccia d'esame.
-
----
-
-## 1. Gestione Utenti ed Autenticazione: Tabella Hash Geometrica su File
-* **Requisito:** Login e registrazione istantanei con blocco dei duplicati in tempo costante.
-* **Scelta Algoritmica:** Tabella Hash ad indirizzamento aperto (Linear Probing) su file indice binarizzato (`users_idx.txt`) accoppiata a un file dati ad anagrafica fissa (`users.txt`).
-* **Complessità Computazionale:** Caso medio **$O(1)$**.
-* **Razionale d'Uso:** L'username viene convertito in un intero tramite l'algoritmo **DJB2** per calcolare l'indice slot (`hash % capacità`). Il server esegue un salto `fseek` immediato nel file indice e, estratto il puntatore alla riga, effettua un secondo salto geometrico speculare sul file dei dati sfruttando la lunghezza rigida della riga (**107 byte**). Viene eliminata qualsiasi scansione sequenziale lineare, garantendo l'accesso e l'intercettazione dei duplicati in tempo costante.
+Il sistema è stato progettato per simulare il comportamento di un Database Relazionale su file di testo a geometria fissa. L'obiettivo primario è l'elisione dei colli di bottiglia indotti dall'I/O sul disco, garantendo la massima reattività del finto server municipale attraverso strutture dati ottime.
 
 ---
 
-## 2. Sessione Locale e Annullamento Azioni: Linked List + Stack Statico LIFO
-* **Requisito:** Accumulo volatile delle segnalazioni del cittadino e meccanismo di Undo/Revert.
-* **Scelta Algoritmica:** Lista Concatenata Dinamica (`ReportList`) accoppiata a uno Stack Statico a capacità fissata (`ReportStack`, max 10 elementi).
-* **Complessità Computazionale:** Inserimento e Push in **$O(1)$**.
-* **Razionale d'Uso:** La Linked List consente inserimenti in testa immediati senza preallocare memoria o conoscere il volume di problemi inviati. Lo Stack risponde alla semantica LIFO (Last In, First Out) per l'Undo: prima di alterare un report, il sistema esegue una **clonazione profonda** dei campi e spinge il backup nello stack. L'azione di annullamento estrae la copia e ripristina la lista RAM. Il disco non viene toccato, isolando le modifiche transitorie dal server.
+## 1. Autenticazione e Anagrafica Utenti
+* **Struttura Dati:** Tabella Hash ad indirizzamento aperto con risoluzione delle collisioni tramite Linear Probing (Ispezione Lineare), persistita su file binario (`users_idx.txt` e `users.txt`).
+* **Dimensione Record:** L'indice hash occupa righe rigide regolate dalla macro `USER_IDX_LINE` (6 byte). Il database anagrafico occupa righe fisse regolate da `USER_LINE_TOTAL` (107 byte).
+* **Algoritmo di Hashing:** DJB2 (Daniel J. Bernstein).
+* **Complessità Computazionale:** 
+  * Caso Medio: **$\mathcal{O}(1)$** sia per il login che per la registrazione.
+  * Caso Peggiore (Tabella satura): $\mathcal{O}(k)$ dove $k$ è la capacità della tabella.
+* **Razionale d'Uso:** L'indirizzamento aperto combinato con il Linear Probing azzera i puntatori RAM sul disco. La sovrascrittura protetta a 5 byte numerici impedisce la generazione di newline spuri. Il sistema monitora il Load Factor e innesca l'espansione automatica di 50 slot (`BLOCK_SIZE_USERS`) al superamento della soglia critica del 70%, mantenendo l'accesso in tempo costante.
 
 ---
 
-## 3. Ricerca Operativa e Sfoltimento Master: Albero AVL per Codice Report
-* **Requisito:** Ricerca e sfoltimento immediato di una segnalazione tramite codice identificativo senza degradamento prestazionale.
-* **Scelta Algoritmica:** Albero Auto-Bilanciante AVL (`ReportAVL`) strutturato sulla chiave `report_id`, serializzato In-Order su file (`report_AVL_BY_REPORT_ID.txt`).
-* **Complessità Computazionale:** Caso peggiore e medio strettamente limitato a **$O(\log n)$**.
-* **Razionale d'Uso:** L'albero AVL introduce rotazioni singole e doppie (LL, RR, LR, RL) basate sul Fattore di Bilanciamento per mantenere la differenza di altezza tra sottoalberi $\le 1$, garantendo che non degradi mai in una lista. Il dipendente esegue ricerche rapide sul canale di verità del disco per localizzare e invalidare a `N` (Null) le vecchie celle fisiche master in tempo logaritmico certo. L'accesso al file master avviene saltando geometricamente tramite la macro rigida **`REPORT_MASTER_LINE` (352 byte)**.
-
----
-## 4. Storico Personale del Cittadino: Albero AVL per User ID con Nodi ad Accumulo Dinamico
-* **Requisito:** Estrazione dello storico del cittadino con isolamento delle modifiche ed elisione delle asimmetrie informative.
-* **Scelta Algoritmica:** Albero Auto-Bilanciante AVL (`ReportAVL`) strutturato sulla chiave `user_id`, i cui nodi contengono vettori dinamici in grado di accumulare e aggregare n-chiavi di `report_id` per lo stesso utente.
-* **Complessità Computazionale:** Ricerca in **$O(\log n)$** + Risoluzione codici in **$O(\log n)$**.
-* **Razionale d'Uso:** Un cittadino può inviare più segnalazioni. Per rispettare l'Information Hiding e l'integrità dei dati, il nodo AVL utente non duplica gli oggetti Report complessi, ma mappa l'ID dell'utente e la sequenza numerica dei suoi codici. La ricerca logaritmica restituisce questi vettori compatti, che vengono poi incrociati con l'indice di verità AVL del Report ID, visualizzando lo stato aggiornato in tempo reale ed eliminando i record invalidati o in fase di lavorazione nella BENCH.
+## 2. Sessione Locale e Meccanismo di Undo (Cittadino)
+* **Struttura Dati:** Lista concatenata semplice dinamica (`ReportList`) combinata con uno Stack statico preallocato (`ReportStack`).
+* **Capacità Stack:** Limitata rigorosamente a un massimo di 10 elementi.
+* **Complessità Computazionale:**
+  * Inserimento nuova segnalazione in lista: **$\mathcal{O}(1)$** (inserimento nativo in testa).
+  * Push/Pop nello Stack di Undo: **$\mathcal{O}(1)$** ad accesso diretto su array statico.
+  * Modifica o Annullamento locale: $\mathcal{O}(m)$ nel caso peggiore per la ricerca lineare dell'ID nella lista RAM di sessione (dove $m \le 50$).
+* **Razionale d'Uso:** L'isolamento della sessione in RAM evita scritture premature sul disco. L'operazione di `stack_push` esegue una clonazione profonda (*deep copy*) del report, isolando il punto di ripristino dalle successive alterazioni della lista prima del logout.
 
 ---
 
-## 5. Dashboard Statistica e Indicatori Comunali: Registro Centrale su File
-* **Requisito:** Generazione istantanea del report statistico senza scansioni orizzontali distruttive e onerose dei file storici.
-* **Scelta Algoritmica:** Registro di Controllo Binarizzato statico con aggiornamento atomico (`system_total_report.txt`).
-* **Complessità Computazionale:** Lettura, Scrittura e Aggiornamento in **$O(1)$**.
-* **Razionale d'Uso:** Per azzerare i tempi di scansione sequenziale su archivi massivi, il server memorizza in anticipo 11 righe rigide da 11 byte per ospitare contatori numerici a 10 cifre (`%010u\n`), regolate dalla macro **`SYSTEM_REG_LINE`**. Ogni inserimento o eliminazione logica (`DESTROYED`) esegue un salto `fseek` atomico che aggiorna il contatore specifico. La cache della BENCH è invece isolata e protetta a **`REPORT_BENCH_LINE` (351 byte)** per non sprecare spazio sul disco e velocizzare l'I/O volatile delle sessioni dei cittadini.
+## 3. Ricerca ed Avanzamento Pratiche (Dipendente e Storico)
+* **Struttura Dati:** Indici sequenziali piatti ordinati (*Inorder Arrays*) estratti da Alberi Auto-Bilanciati AVL (`PATH_AVL_REPORT_ID` e `PATH_AVL_USER_ID`).
+* **Geometria Hardware:** 
+  * Indice Report ID: Righe fisse da **22 byte (`AVL_REPORT_ID_LINE`)** in formato compresso contino senza spazi: `[REPORT_ID(10)][STATUS(1)][DISK_ROW(10)]\n`.
+  * Indice User ID: Righe fisse da **21 byte (`AVL_USER_ID_LINE`)** in formato contratto senza spazi: `[USER_ID(10)][REPORT_ID(10)]\n`.
+* **Complessità Computazionale:**
+  * Ricerca univoca `findReportId`: **$\mathcal{O}(\log n)$** sul file d'indice.
+  * Ricerca non univoca `findUserId`: **$\mathcal{O}(\log n)$** tramite Ricerca Binaria (Dicotomica) su disco integrata da espansione bilaterale contigua.
+  * Accesso e modifica sul file Master: **$\mathcal{O}(1)$** tramite salto diretto `fseek` moltiplicato per `REPORT_MASTER_LINE` (352 byte).
+* **Razionale d'Uso:** Gli indici vengono ricalcolati da zero tramite visite simmetriche *In-Order* solo al momento del flush. Il client non ricostruisce gli alberi in RAM (operazione distruttiva per l'I/O), ma esegue salti dicotomici direttamente sui file binari, estraendo la `disk_row` per agganciare i record in tempo logaritmico certo, escludendo le celle invalidate a `'N'`.
+
+---
+
+## 4. Gestione Spazio e Riciclo Chirurgico Master
+* **Struttura Dati:** File ausiliari operanti con semantica di Stack LIFO (`open_holes.txt`, ecc.).
+* **Complessità Computazionale:** **$\mathcal{O}(1)$** costante sia in fase di Push che di Pop.
+* **Razionale d'Uso:** Per azzerare il degrado prestazionale causato dalla ricerca di spazi vuoti nel database storico, il server non scansiona mai orizzontalmente i file Master. Quando una riga viene marcata a `'N'`, il suo indice viene accatastato in coda al file dei buchi (Push). Al momento del flush pesante, il server preleva l'ultima riga del file buchi in $O(1)$, sovrascrive lo slot master in modo chirurgico e tronca il file ausiliario (Pop binaria), garantendo la scalabilità infinita dell'archivio.
+
+---
+
+## 5. Dashboard Statistica Comunale
+* **Struttura Dati:** Registro di controllo binarizzato statico con aggiornamento atomico (`system_total_report.txt`).
+* **Geometria Hardware:** Righe fisse regolate da `SYSTEM_REG_LINE` (11 byte per riga, formato `%010u\n`).
+* **Variabili Mappate:** 13 variabili pre-calcolate (ID globale, counter cache, 3 indicatori di stato, 5 ripartizioni di categoria e 2 indicatori di consistenza nodi AVL in posizione 11 e 12).
+* **Complessità Computazionale:** **$\mathcal{O}(1)$** costante per lettura, scrittura e rendering a video.
+* **Razionale d'Uso:** Qualsiasi inserimento, sfoltimento logico (`DESTROYED`) o cambio di stato esegue un aggiornamento atomico sul posto tramite salto `fseek` combinato con la funzione helper `update_system_counters`. Il dipendente ottiene una dashboard istantanea in tempo costante, senza dover scansionare gigabyte di file storici sul disco.
 
 
 
