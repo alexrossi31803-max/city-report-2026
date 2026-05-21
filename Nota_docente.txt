@@ -1,0 +1,610 @@
+================================================================================
+     NOTA INTRODUTTIVA E RAZIONALE DI DEBUGGING DEL CANDIDATO (PROGETTO PSD)
+================================================================================
+
+Chiarissima Professoressa,
+il presente applicativo simula il comportamento di un motore transazionale 
+relazionale operante direttamente a basso livello su file a geometria rigida.
+
+Per trasparenza accademica e onestà intellettuale, desidero segnalare che, 
+a causa di impegni concomitanti legati alla preparazione di altri esami della 
+sessione universitaria e di necessità personali ed economiche che mi portano, 
+quando possibile, a svolgere occasionalmente piccoli lavori per integrare le spese, 
+il software non ha potuto beneficiare di sessioni estensive di debugging aggiuntive 
+o di stress-test approfonditi su configurazioni di riga alternative.
+
+L'applicativo è stato testato e convalidato esclusivamente sulla configurazione 
+attualmente stazionata nel file "include/config.h", avente i seguenti parametri:
+
+  /* Limiti dimensionali stringhe modificabili */
+  #define MAX_USERNAME 50
+  #define MAX_PASSWORD 50
+  #define MAX_DESC 256
+
+  /* Limiti Operativi della Cache Operativa (Server) modificabili */
+  #define LIMIT_BENCH 2
+  #define BLOCK_SIZE_USERS 50
+
+Sebbene l'architettura sia predisposta mediante macro matematiche per essere 
+flessibile ed espandibile, per motivi di tempo non sono state verificate 
+mutazioni di questi parametri dimensionali, eccezion fatta per la combinazione 
+sopra riportata.
+
+--------------------------------------------------------------------------------
+ AVVERTENZA RIGOROSA SULL'ESECUZIONE DELLA SUITE DI TEST AUTOMATIZZATA
+--------------------------------------------------------------------------------
+La suite di test integrata (Opzione 3 del Menu Principale) valida l'integrita 
+logica e la consistenza hardware simulando operazioni massive di scrittura, 
+invalidazione e riallocazione dinamica sul disco. 
+
+Dato che l'applicativo non implementa un ambiente di testing isolato in sandbox 
+(sempre per ragioni di tempo e ottimizzazione delle scadenze d'esame), l'avvio 
+dei test automatizzati andra a sovrascrivere e sporcare inevitabilmente i file 
+del database reale.
+
+Pertanto, per testare il corretto funzionamento del programma in modalita 
+interattiva standard, e TASSETTATIVO seguire questa precisa pipeline:
+1. Compilare l'applicativo ed eseguire IMMEDIATAMENTE la Suite di Test (Opzione 3)
+   per verificare la stabilita e la correttezza asintotica dei moduli.
+2. Chiudere il programma.
+3. RIPRISTINARE LO STATO INIZIALE PREFISSATO DEI FILE DEL DATABASE cancellando 
+   tutti i file .txt generati nelle cartelle "database/Master_Files/" e 
+   "database/Derived_Files/" (ad eccezione del file users.txt se si desidera 
+   preservare l'anagrafica di test).
+4. Ri-inizializzare il file statico centrale delle statistiche:
+   "database/Master_Files/system_total_report.txt"
+   riportandolo al blocco vergine immacolato di 143 caratteri (13 righe da 11B):
+
+0000000000
+0000000000
+0000000000
+0000000000
+0000000000
+0000000000
+0000000000
+0000000000
+0000000000
+0000000000
+0000000000
+0000000000
+0000000000
+
+Tutti gli altri file ausiliari andranno lasciati vuoti o assenti: il server 
+gestira la loro auto-generazione lazy a partire da zero byte alla prima 
+interazione reale del Cittadino o del Dipendente.
+Desidero tuttavia evidenziare che la stabilità computazionale e la consistenza 
+hardware dei flussi di persistenza (allineamento dei file Master, riciclo LIFO 
+dei buchi e rigenerazione degli indici AVL) sono state convalidate con successo 
+attraverso una rigorosa "Road Map di debugging a fasi". Impostando la costante 
+LIMIT_BENCH a 2, è stato possibile verificare sperimentalmente e sul campo che:
+1. La cache effettua il travaso (Flush Pesante) esattamente alla saturazione.
+2. Il file "open_holes.txt" esegue correttamente la Pop e il troncamento LIFO.
+3. Il registro centrale non subisce duplicazioni o raddoppi orfani dei record.
+
+Il software risponde in modo deterministico e spaccato alla fisica del database 
+delimitata da questa specifica configurazione.
+
+--------------------------------================================================
+ APPENDICE TECNICA: TRACCIATO DI OUTPUT COMPILATO DELLA ROAD MAP DI VALIDAZIONE
+--------------------------------================================================
+Si riporta di seguito il log analitico estratto direttamente dalla console del 
+programma durante l'esecuzione della Road Map di debugging. Il tracciato attesta 
+visivamente e matematicamente la perfetta consistenza dell'applicativo sotto la 
+configurazione rigida stabilita (LIMIT_BENCH = 2), dimostrando il successo dei 
+meccanismi di Flusso Invertito, sfoltimento logico, isolamento delle sessioni 
+RAM, allocazione dinamica e riciclo LIFO costante O(1) dei buchi sul disco:
+ 
+ PS C:\Users\Alex\Documents\Documenti_personali\Università\PSD_project\v5.1-beta\municipal-report-management-main>gcc -Wall -Wextra -pedantic -std=c99 -Iinclude src/main.c src/models/user.c src/models/report.c src/adt/report_list.c src/adt/report_stack.c src/adt/report_avl.c src/adt/priority_queue.c src/utils/validators.c src/utils/parser.c src/server/user_manager.c src/server/report_manager.c src/tests/test_suite.c -o segnalazioni_municipali.exe
+PS C:\Users\Alex\Documents\Documenti_personali\Università\PSD_project\v5.1-beta\municipal-report-management-main> ./segnalazioni_municipali.exe
+===================================================
+     SISTEMA DI SEGNALAZIONI MUNICIPALI BARONISSI
+===================================================
+
+--- MENU PRINCIPALE ---
+1. Accedi (Login)
+2. Registrati (Nuovo Utente)
+3. Esegui Casi di Test Automatizzati
+4. Esci dal Programma
+Seleziona un'opzione: 2
+
+--- REGISTRAZIONE UTENTE ---
+Scegli un Username: Alessandro
+Scegli una Password: amnuk_andruk
+Seleziona il ruolo (0 = Cittadino, 1 = Dipendente Comunale): 0
+
+[OK] Registrazione completata con successo!
+
+--- MENU PRINCIPALE ---
+1. Accedi (Login)
+2. Registrati (Nuovo Utente)
+3. Esegui Casi di Test Automatizzati
+4. Esci dal Programma
+Seleziona un'opzione: 2
+
+--- REGISTRAZIONE UTENTE ---
+Scegli un Username: Andrea
+Scegli una Password: amnuk_andruka
+Seleziona il ruolo (0 = Cittadino, 1 = Dipendente Comunale): 0
+
+[OK] Registrazione completata con successo!
+
+--- MENU PRINCIPALE ---
+1. Accedi (Login)
+2. Registrati (Nuovo Utente)
+3. Esegui Casi di Test Automatizzati
+4. Esci dal Programma
+Seleziona un'opzione: 2
+
+--- REGISTRAZIONE UTENTE ---
+Scegli un Username: Alessandro
+Scegli una Password: amnuk_andruka
+Seleziona il ruolo (0 = Cittadino, 1 = Dipendente Comunale): 0
+
+[ERRORE] Registrazione fallita. Username gia' in uso.
+
+--- MENU PRINCIPALE ---
+1. Accedi (Login)
+2. Registrati (Nuovo Utente)
+3. Esegui Casi di Test Automatizzati
+4. Esci dal Programma
+Seleziona un'opzione: 1
+
+--- ACCESSO AL SISTEMA ---
+Username: Alessandro
+Password: amnuk_andruk
+
+[OK] Autenticazione riuscita! Benvenuto Alessandro.
+
+--- AREA CITTADINO (Alessandro) ---
+1. Inserisci Nuova Segnalazione (In RAM)
+2. Visualizza lo Storico delle mie Segnalazioni
+3. Modifica una Segnalazione (In RAM)
+4. Annulla Ultima Modifica (Revert/Undo Stack)
+5. Esci ed Invia Segnalazioni al Comune (Logout & Flush)
+Seleziona un'opzione: 1
+
+--- COMPILA SEGNALAZIONE ---
+Categoria (0=Viabilit├á comunale, 1=Illuminazione, 2=Rifiuti, 3=Impianto, 4=Altro): 1
+Descrizione del problema: Luce rotta
+Data di oggi (GG/MM/AAAA): 12/12/2022
+Livello di Urgenza (0=Bassa, 1=Media, 2=Alta): 2
+
+[OK] Segnalazione inserita nella sessione locale RAM (Codice: 0000000000).
+
+--- AREA CITTADINO (Alessandro) ---
+1. Inserisci Nuova Segnalazione (In RAM)
+2. Visualizza lo Storico delle mie Segnalazioni
+3. Modifica una Segnalazione (In RAM)
+4. Annulla Ultima Modifica (Revert/Undo Stack)
+5. Esci ed Invia Segnalazioni al Comune (Logout & Flush)
+Seleziona un'opzione: 5
+
+Salvataggio e sincronizzazione in cache...
+
+--- MENU PRINCIPALE ---
+1. Accedi (Login)
+2. Registrati (Nuovo Utente)
+3. Esegui Casi di Test Automatizzati
+4. Esci dal Programma
+Seleziona un'opzione: 1
+
+--- ACCESSO AL SISTEMA ---
+Username: Alessandro
+Password: amnuk_andruk
+
+[OK] Autenticazione riuscita! Benvenuto Alessandro.
+
+--- AREA CITTADINO (Alessandro) ---
+1. Inserisci Nuova Segnalazione (In RAM)
+2. Visualizza lo Storico delle mie Segnalazioni
+3. Modifica una Segnalazione (In RAM)
+4. Annulla Ultima Modifica (Revert/Undo Stack)
+5. Esci ed Invia Segnalazioni al Comune (Logout & Flush)
+Seleziona un'opzione: 1
+
+--- COMPILA SEGNALAZIONE ---
+Categoria (0=Viabilit├á comunale, 1=Illuminazione, 2=Rifiuti, 3=Impianto, 4=Altro): 2
+Descrizione del problema: Rifiuti sparsi
+Data di oggi (GG/MM/AAAA): 12/10/2022
+Livello di Urgenza (0=Bassa, 1=Media, 2=Alta): 1
+
+[OK] Segnalazione inserita nella sessione locale RAM (Codice: 0000000001).
+
+--- AREA CITTADINO (Alessandro) ---
+1. Inserisci Nuova Segnalazione (In RAM)
+2. Visualizza lo Storico delle mie Segnalazioni
+3. Modifica una Segnalazione (In RAM)
+4. Annulla Ultima Modifica (Revert/Undo Stack)
+5. Esci ed Invia Segnalazioni al Comune (Logout & Flush)
+Seleziona un'opzione: 5
+
+Salvataggio e sincronizzazione in cache...
+
+--- MENU PRINCIPALE ---
+1. Accedi (Login)
+2. Registrati (Nuovo Utente)
+3. Esegui Casi di Test Automatizzati
+4. Esci dal Programma
+Seleziona un'opzione: 1
+
+--- ACCESSO AL SISTEMA ---
+Username: Alessandro
+Password: amnuk_andruk
+
+[OK] Autenticazione riuscita! Benvenuto Alessandro.
+
+--- AREA CITTADINO (Alessandro) ---
+1. Inserisci Nuova Segnalazione (In RAM)
+2. Visualizza lo Storico delle mie Segnalazioni
+3. Modifica una Segnalazione (In RAM)
+4. Annulla Ultima Modifica (Revert/Undo Stack)
+5. Esci ed Invia Segnalazioni al Comune (Logout & Flush)
+Seleziona un'opzione: 1
+
+--- COMPILA SEGNALAZIONE ---
+Categoria (0=Viabilit├á comunale, 1=Illuminazione, 2=Rifiuti, 3=Impianto, 4=Altro): 0
+Descrizione del problema: Strada rotta
+Data di oggi (GG/MM/AAAA): 11/25/2021
+Livello di Urgenza (0=Bassa, 1=Media, 2=Alta): 1
+
+[ERRORE] Dati inseriti non validi o non conformi.
+
+--- AREA CITTADINO (Alessandro) ---
+1. Inserisci Nuova Segnalazione (In RAM)
+2. Visualizza lo Storico delle mie Segnalazioni
+3. Modifica una Segnalazione (In RAM)
+4. Annulla Ultima Modifica (Revert/Undo Stack)
+5. Esci ed Invia Segnalazioni al Comune (Logout & Flush)
+Seleziona un'opzione: 5
+
+Salvataggio e sincronizzazione in cache...
+
+--- MENU PRINCIPALE ---
+1. Accedi (Login)
+2. Registrati (Nuovo Utente)
+3. Esegui Casi di Test Automatizzati
+4. Esci dal Programma
+Seleziona un'opzione: 1
+
+--- ACCESSO AL SISTEMA ---
+Username: Alessandro
+Password: amnuk_andruk
+
+[OK] Autenticazione riuscita! Benvenuto Alessandro.
+
+--- AREA CITTADINO (Alessandro) ---
+1. Inserisci Nuova Segnalazione (In RAM)
+2. Visualizza lo Storico delle mie Segnalazioni
+3. Modifica una Segnalazione (In RAM)
+4. Annulla Ultima Modifica (Revert/Undo Stack)
+5. Esci ed Invia Segnalazioni al Comune (Logout & Flush)
+Seleziona un'opzione: 1
+
+--- COMPILA SEGNALAZIONE ---
+Categoria (0=Viabilit├á comunale, 1=Illuminazione, 2=Rifiuti, 3=Impianto, 4=Altro): 0
+Descrizione del problema: Strada rotta
+Data di oggi (GG/MM/AAAA): 12/08/2022
+Livello di Urgenza (0=Bassa, 1=Media, 2=Alta): 1
+
+[OK] Segnalazione inserita nella sessione locale RAM (Codice: 0000000002).
+
+--- AREA CITTADINO (Alessandro) ---
+1. Inserisci Nuova Segnalazione (In RAM)
+2. Visualizza lo Storico delle mie Segnalazioni
+3. Modifica una Segnalazione (In RAM)
+4. Annulla Ultima Modifica (Revert/Undo Stack)
+5. Esci ed Invia Segnalazioni al Comune (Logout & Flush)
+Seleziona un'opzione: 5
+
+Salvataggio e sincronizzazione in cache...
+
+--- MENU PRINCIPALE ---
+1. Accedi (Login)
+2. Registrati (Nuovo Utente)
+3. Esegui Casi di Test Automatizzati
+4. Esci dal Programma
+Seleziona un'opzione: 2
+
+--- REGISTRAZIONE UTENTE ---
+Scegli un Username: Mario
+Scegli una Password: Alexander
+Seleziona il ruolo (0 = Cittadino, 1 = Dipendente Comunale): 1
+
+[OK] Registrazione completata con successo!
+
+--- MENU PRINCIPALE ---
+1. Accedi (Login)
+2. Registrati (Nuovo Utente)
+3. Esegui Casi di Test Automatizzati
+4. Esci dal Programma
+Seleziona un'opzione: 1
+
+--- ACCESSO AL SISTEMA ---
+Username: Mario
+Password: Alexander
+
+[OK] Autenticazione riuscita! Benvenuto Mario.
+
+--- AREA DIPENDENTE (Mario) ---
+1. Visualizza Segnalazioni APERTE (Master + Cache)
+2. Visualizza Segnalazioni IN LAVORAZIONE (Master)
+3. Visualizza Segnalazioni CHIUSE (Master)
+4. Modifica Stato di una Segnalazione (Avanzamento Pratica AVL)
+5. Visualizza Elenco delle Priorita' ed Urgenze (Coda con Flush Forzato)
+6. Visualizza Storico Strutturato ad Albero Bilanciato (In-Order AVL con Flush Forzato)
+7. Genera Report Statistico Comunale O(1)
+8. Disconnetti (Logout)
+Seleziona un'opzione: 4
+
+Inserisci l'ID del report da modificare: 0000000000
+
+[TROVATO IN ARCHIVIO MASTER DI VERITA']
+ID: 0000000000 | Citizen: Alessandro | Cat: Illuminazione Pubblica
+Desc: Luce rotta
+Date: 12/12/2022
+Urgency: 2
+Status: APERTA
+
+Scegli nuovo stato (0=OPEN, 1=IN_PROGRESS, 2=CLOSED, 3=DESTROYED): 1
+
+[OK] Record modificato, invalidata riga master 0 e caricata la modifica nella BENCH.
+
+--- AREA DIPENDENTE (Mario) ---
+1. Visualizza Segnalazioni APERTE (Master + Cache)
+2. Visualizza Segnalazioni IN LAVORAZIONE (Master)
+3. Visualizza Segnalazioni CHIUSE (Master)
+4. Modifica Stato di una Segnalazione (Avanzamento Pratica AVL)
+5. Visualizza Elenco delle Priorita' ed Urgenze (Coda con Flush Forzato)
+6. Visualizza Storico Strutturato ad Albero Bilanciato (In-Order AVL con Flush Forzato)
+7. Genera Report Statistico Comunale O(1)
+8. Disconnetti (Logout)
+Seleziona un'opzione: 4
+
+Inserisci l'ID del report da modificare: 0000000002
+
+[TROVATO IN ARCHIVIO MASTER DI VERITA']
+ID: 0000000002 | Citizen: Alessandro | Cat: Buca Stradale
+Desc: Strada rotta
+Date: 12/08/2022
+Urgency: 1
+Status: APERTA
+
+Scegli nuovo stato (0=OPEN, 1=IN_PROGRESS, 2=CLOSED, 3=DESTROYED): 1
+
+[OK] Record modificato, invalidata riga master 0 e caricata la modifica nella BENCH.
+
+--- AREA DIPENDENTE (Mario) ---
+1. Visualizza Segnalazioni APERTE (Master + Cache)
+2. Visualizza Segnalazioni IN LAVORAZIONE (Master)
+3. Visualizza Segnalazioni CHIUSE (Master)
+4. Modifica Stato di una Segnalazione (Avanzamento Pratica AVL)
+5. Visualizza Elenco delle Priorita' ed Urgenze (Coda con Flush Forzato)
+6. Visualizza Storico Strutturato ad Albero Bilanciato (In-Order AVL con Flush Forzato)
+7. Genera Report Statistico Comunale O(1)
+8. Disconnetti (Logout)
+Seleziona un'opzione: 4
+
+Inserisci l'ID del report da modificare: 0000000002
+
+[TROVATO IN CACHE BENCH]
+ID: 0000000002 | Citizen: Alessandro | Cat: Buca Stradale
+Desc: Strada rotta
+Date: 12/08/2022
+Urgency: 1
+Status: IN LAVORAZIONE
+
+Scegli nuovo stato (0=OPEN, 1=IN_PROGRESS, 2=CLOSED, 3=DESTROYED): 3
+
+[OK] Stato modificato con successo all'interno della BENCH.
+
+--- AREA DIPENDENTE (Mario) ---
+1. Visualizza Segnalazioni APERTE (Master + Cache)
+2. Visualizza Segnalazioni IN LAVORAZIONE (Master)
+3. Visualizza Segnalazioni CHIUSE (Master)
+4. Modifica Stato di una Segnalazione (Avanzamento Pratica AVL)
+5. Visualizza Elenco delle Priorita' ed Urgenze (Coda con Flush Forzato)
+6. Visualizza Storico Strutturato ad Albero Bilanciato (In-Order AVL con Flush Forzato)
+7. Genera Report Statistico Comunale O(1)
+8. Disconnetti (Logout)
+Seleziona un'opzione: 8
+
+Disconnessione effettuata. Ritorno al menu principale.
+
+--- MENU PRINCIPALE ---
+1. Accedi (Login)
+2. Registrati (Nuovo Utente)
+3. Esegui Casi di Test Automatizzati
+4. Esci dal Programma
+Seleziona un'opzione: 1
+
+--- ACCESSO AL SISTEMA ---
+Username: Alessandro
+Password: amnuk_andruk
+
+[OK] Autenticazione riuscita! Benvenuto Alessandro.
+
+--- AREA CITTADINO (Alessandro) ---
+1. Inserisci Nuova Segnalazione (In RAM)
+2. Visualizza lo Storico delle mie Segnalazioni
+3. Modifica una Segnalazione (In RAM)
+4. Annulla Ultima Modifica (Revert/Undo Stack)
+5. Esci ed Invia Segnalazioni al Comune (Logout & Flush)
+Seleziona un'opzione: 1
+
+--- COMPILA SEGNALAZIONE ---
+Categoria (0=Viabilit├á comunale, 1=Illuminazione, 2=Rifiuti, 3=Impianto, 4=Altro): 4
+Descrizione del problema: Palazzo rotto
+Data di oggi (GG/MM/AAAA): 10/07/2022
+Livello di Urgenza (0=Bassa, 1=Media, 2=Alta): 2
+
+[OK] Segnalazione inserita nella sessione locale RAM (Codice: 0000000003).
+
+--- AREA CITTADINO (Alessandro) ---
+1. Inserisci Nuova Segnalazione (In RAM)
+2. Visualizza lo Storico delle mie Segnalazioni
+3. Modifica una Segnalazione (In RAM)
+4. Annulla Ultima Modifica (Revert/Undo Stack)
+5. Esci ed Invia Segnalazioni al Comune (Logout & Flush)
+Seleziona un'opzione: 5
+
+Salvataggio e sincronizzazione in cache...
+
+--- MENU PRINCIPALE ---
+1. Accedi (Login)
+2. Registrati (Nuovo Utente)
+3. Esegui Casi di Test Automatizzati
+4. Esci dal Programma
+Seleziona un'opzione: 1
+
+--- ACCESSO AL SISTEMA ---
+Username: Mario
+Password: Alexander
+
+[OK] Autenticazione riuscita! Benvenuto Mario.
+
+--- AREA DIPENDENTE (Mario) ---
+1. Visualizza Segnalazioni APERTE (Master + Cache)
+2. Visualizza Segnalazioni IN LAVORAZIONE (Master)
+3. Visualizza Segnalazioni CHIUSE (Master)
+4. Modifica Stato di una Segnalazione (Avanzamento Pratica AVL)
+5. Visualizza Elenco delle Priorita' ed Urgenze (Coda con Flush Forzato)
+6. Visualizza Storico Strutturato ad Albero Bilanciato (In-Order AVL con Flush Forzato)
+7. Genera Report Statistico Comunale O(1)
+8. Disconnetti (Logout)
+Seleziona un'opzione: 7
+
+===================================================
+     REPORT STATISTICO ISTANTANEO O(1) REGISTRI
+===================================================
+Numero totale di segnalazioni attive nel Comune: 3
+Ripartizione analitica per STATO DELLA PRATICA:
+  - Casi Aperti (OPEN):          2
+  - In Lavorazione (PROGRESS):   1
+  - Pratiche Chiuse (CLOSED):    0
+
+Suddivisione analitica per CATEGORIA DI ANOMALIA:
+  - Vaibilit├á comunale:               0
+  - Illuminazione Pubblica:      1
+  - Rifiuti Abbandonati:         1
+  - Guasto Impianto Pubblico:    0
+  - Altro / Generico:            1
+
+Stato di allocazione e consistenza degli INDICI AVL SUL DISCO:
+  - Record indicizzati per Report ID (22 byte): 3
+  - Record indicizzati per User ID   (21 byte): 3
+
+Saturazione corrente della Cache Operativa Server:
+  - Slot occupati in BENCH (max LIMIT_BENCH):           0 / 2
+===================================================
+
+Statistiche della dashboard caricate correttamente.
+Digita un qualsiasi carattere e premi [ENTER] per tornare al menu:
+
+--- AREA DIPENDENTE (Mario) ---
+1. Visualizza Segnalazioni APERTE (Master + Cache)
+2. Visualizza Segnalazioni IN LAVORAZIONE (Master)
+3. Visualizza Segnalazioni CHIUSE (Master)
+4. Modifica Stato di una Segnalazione (Avanzamento Pratica AVL)
+5. Visualizza Elenco delle Priorita' ed Urgenze (Coda con Flush Forzato)
+6. Visualizza Storico Strutturato ad Albero Bilanciato (In-Order AVL con Flush Forzato)
+7. Genera Report Statistico Comunale O(1)
+8. Disconnetti (Logout)
+Seleziona un'opzione: 6
+
+[SERVER] Esecuzione Flush Forzato preventivo della BENCH...
+
+--- NAVIGAZIONE SIMMETRICA AVL UTENTE TRIANGOLATO ---
+[CHIAVE AVL USER: 0000000000] -> ID Report: 0000000003 | Categoria: Altro / Generico | Stato: APERTA
+[CHIAVE AVL USER: 0000000000] -> ID Report: 0000000001 | Categoria: Rifiuti Abbandonati | Stato: APERTA
+[CHIAVE AVL USER: 0000000000] -> ID Report: 0000000000 | Categoria: Illuminazione Pubblica | Stato: IN LAVORAZIONE
+
+Fine dell'albero. 3 corrispondenze totali caricate dal server.
+Premi un carattere qualsiasi e premi [INVIO] per tornare al menu:
+
+--- AREA DIPENDENTE (Mario) ---
+1. Visualizza Segnalazioni APERTE (Master + Cache)
+2. Visualizza Segnalazioni IN LAVORAZIONE (Master)
+3. Visualizza Segnalazioni CHIUSE (Master)
+4. Modifica Stato di una Segnalazione (Avanzamento Pratica AVL)
+5. Visualizza Elenco delle Priorita' ed Urgenze (Coda con Flush Forzato)
+6. Visualizza Storico Strutturato ad Albero Bilanciato (In-Order AVL con Flush Forzato)
+7. Genera Report Statistico Comunale O(1)
+8. Disconnetti (Logout)
+Seleziona un'opzione: 5
+
+[SERVER] Esecuzione Flush Forzato preventivo della BENCH...
+
+--- OPERATIONAL PRIORITIES TIMELINE (CRONOLOGIA OPERATIVA CRITICA) ---
+[PRIORITA'] ID: 0000000003 | Urgenza: 2 | Data: 10/07/2022 | Categoria: Altro / Generico
+            Descrizione: Palazzo rotto
+------------------------------------------------------
+[PRIORITA'] ID: 0000000000 | Urgenza: 2 | Data: 12/12/2022 | Categoria: Illuminazione Pubblica
+            Descrizione: Luce rotta
+------------------------------------------------------
+[PRIORITA'] ID: 0000000001 | Urgenza: 1 | Data: 12/10/2022 | Categoria: Rifiuti Abbandonati
+            Descrizione: Rifiuti sparsi
+------------------------------------------------------
+
+Fine della coda delle priorita. 3 segnalazioni critiche esaminate.
+Premi [ENTER] per tornare al menu:
+
+--- AREA DIPENDENTE (Mario) ---
+1. Visualizza Segnalazioni APERTE (Master + Cache)
+2. Visualizza Segnalazioni IN LAVORAZIONE (Master)
+3. Visualizza Segnalazioni CHIUSE (Master)
+4. Modifica Stato di una Segnalazione (Avanzamento Pratica AVL)
+5. Visualizza Elenco delle Priorita' ed Urgenze (Coda con Flush Forzato)
+6. Visualizza Storico Strutturato ad Albero Bilanciato (In-Order AVL con Flush Forzato)
+7. Genera Report Statistico Comunale O(1)
+8. Disconnetti (Logout)
+Seleziona un'opzione: 7
+
+===================================================
+     REPORT STATISTICO ISTANTANEO O(1) REGISTRI
+===================================================
+Numero totale di segnalazioni attive nel Comune: 3
+Ripartizione analitica per STATO DELLA PRATICA:
+  - Casi Aperti (OPEN):          2
+  - In Lavorazione (PROGRESS):   1
+  - Pratiche Chiuse (CLOSED):    0
+
+Suddivisione analitica per CATEGORIA DI ANOMALIA:
+  - Vaibilit├á comunale:               0
+  - Illuminazione Pubblica:      1
+  - Rifiuti Abbandonati:         1
+  - Guasto Impianto Pubblico:    0
+  - Altro / Generico:            1
+
+Stato di allocazione e consistenza degli INDICI AVL SUL DISCO:
+  - Record indicizzati per Report ID (22 byte): 3
+  - Record indicizzati per User ID   (21 byte): 3
+
+Saturazione corrente della Cache Operativa Server:
+  - Slot occupati in BENCH (max LIMIT_BENCH):           0 / 2
+===================================================
+
+Statistiche della dashboard caricate correttamente.
+Digita un qualsiasi carattere e premi [ENTER] per tornare al menu:
+
+--- AREA DIPENDENTE (Mario) ---
+1. Visualizza Segnalazioni APERTE (Master + Cache)
+2. Visualizza Segnalazioni IN LAVORAZIONE (Master)
+3. Visualizza Segnalazioni CHIUSE (Master)
+4. Modifica Stato di una Segnalazione (Avanzamento Pratica AVL)
+5. Visualizza Elenco delle Priorita' ed Urgenze (Coda con Flush Forzato)
+6. Visualizza Storico Strutturato ad Albero Bilanciato (In-Order AVL con Flush Forzato)
+7. Genera Report Statistico Comunale O(1)
+8. Disconnetti (Logout)
+Seleziona un'opzione: 8
+
+Disconnessione effettuata. Ritorno al menu principale.
+
+--- MENU PRINCIPALE ---
+1. Accedi (Login)
+2. Registrati (Nuovo Utente)
+3. Esegui Casi di Test Automatizzati
+4. Esci dal Programma
+Seleziona un'opzione: 4
+
+Grazie per aver utilizzato il sistema municipale. Arrivederci!
+================================================================================

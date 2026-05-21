@@ -1,0 +1,45 @@
+# Razionale dei Casi di Test e Validazione delle Metriche Hardware (v5.1)
+
+Questo documento illustra il razionale ingegneristico alla base della suite di test automatizzata (`test_suite.c`), descrivendo come ciascuna routine isolata verifichi la stabilità delle geometrie asimmetriche e le complessità asintotiche del server.
+
+---
+
+## 1. Test di Autenticazione e Anagrafica in O(1)
+* **Funzione di Test:** `test_user_hashing_and_registration()`
+* **Razionale d'Uso:** Il test valida l'integrità della Tabella Hash ad indirizzamento aperto su file binario. Accerta il corretto posizionamento dello slot calcolato dall'algoritmo DJB2 e verifica l'intercettazione dei duplicati in tempo costante. Convalida che la sovrascrittura a 10 byte numerici nell'indice utente (`%010d`) in `users_idx.txt` rispetti rigorosamente il passo fisso di 6 byte (`USER_IDX_LINE`), impedendo la generazione di newline spuri o sfasamenti hardware che corromperebbero i successivi login e garantendo la simmetria dimensionale con gli ID del sistema.
+
+---
+
+## 2. Test della Sessione RAM Volatile e della Lista Dinamica
+* **Funzione di Test:** `test_ram_list_and_volatile_session()`
+* **Razionale d'Uso:** Verifica l'isolamento delle operazioni del cittadino in RAM prima del logout. Il test accerta che l'inserimento in testa alla lista concatenata dinamica (`ReportList`) avvenga in tempo costante O(1) e che i metodi di rimozione e ricerca lineare manipolino correttamente i puntatori opachi ad Information Hiding, liberando la memoria al centesimo senza lasciare memory leak.
+
+---
+
+## 3. Test della Logica di Revert (Undo Stack LIFO)
+* **Funzione di Test:** `test_undo_stack_lifo_revert()`
+* **Razionale d'Uso:** Valida la semantica LIFO (Last In, First Out) imposta per la revoca delle modifiche da parte del cittadino sui soli casi OPEN. Il test accerta che l'operazione di push esegua una clonazione profonda (*deep copy*) isolando il backup. La successiva operazione di pop deve estrarre l'oggetto ripristinando la consistenza originaria in RAM ed elidendo la versione modificata errata.
+
+---
+
+## 4. Test del Parser e delle Geometrie Asimmetriche Separate
+* **Funzione di Test:** `test_dual_geometry_parsing_mechanisms()`
+* **Razionale d'Uso:** Questo test controlla il cuore del motore di parsing geometrico del database. Verifica in modo speculare che un oggetto Report serializzato per la cache operi a passo rigido da REPORT_BENCH_LINE byte, posizionando il newline al byte offset REPORT_BENCH_LINE-1. Specularmente, valida che la serializzazione per i file storici rispetti il passo da REPORT_MASTER_LINE byte, iniettando il flag di cella attiva al byte REPORT_MASTER_LINE-2 e il newline al byte REPORT_MASTER_LINE-1, garantendo l'assoluta assenza di sfasamenti fisici sul disco.
+
+---
+
+## 5. Test dell'Ordinamento Incrociato della Coda a Priorità
+* **Funzione di Test:** `test_priority_queue_cross_sorting()`
+* **Razionale d'Uso:** Convalida l'accuratezza del criterio stocastico di precedenza delle emergenze municipali. Il test case inserisce in coda segnalazioni con metriche asimmetriche e verifica che l'estrazione estragga per primi i casi a urgenza scalare decrescente ('2' -> '1' -> '0'). A parità di urgenza, verifica l'applicazione rigorosa della regola FIFO temporale tramite la funzione `compare_dates_fifo`, estraendo il record rimasto inevaso da più tempo (data più remota).
+
+---
+
+## 6. Test della Ricerca Dicotomica su Disco (Inorder Arrays)
+* **Funzione di Test:** `test_disk_binary_search_indices()`
+* **Razionale d'Uso:** Sostituendo qualsiasi ricostruzione di alberi in RAM, questo test case convalida l'efficacia delle funzioni di ricerca diretta su file flat generati via visite simmetriche *In-Order*. Verifica che la funzione `findReportId` esegua una Ricerca Binaria Logaritmica a passi da 22 byte isolando la `disk_row` esatta in tempo O(log n). Specularmente, convalida che la funzione `findUserId` esegua una Ricerca Binaria Logaritmica a passi da 21 byte sul disco guidata dal contatore letto in O(1) dal registro centrale, applicando con successo l'espansione bilaterale contigua per raccogliere tutti i duplicati dell'utente all'interno del vettore dei risultati riallocato dinamicamente.
+
+---
+
+## 7. Test del Registro Centrale Statistico in O(1)
+* **Funzione di Test:** `test_statistical_registers_o1()`
+* **Razionale d'Uso:** Convalida la consistenza e l'aggiornamento atomico dei registri statistici pre-calcolati. Accerta che la funzione `write_system_variable` esegua salti `fseek` posizionali millimetrici a passi da 11 byte (`SYSTEM_REG_LINE`), alterando esclusivamente i 10 byte numerici senza intaccare il newline strutturale del file `system_total_report.txt`. Questo garantisce al dipendente il rendering della dashboard in tempo costante, azzerando le scansioni sequenziali massive sui file storici.

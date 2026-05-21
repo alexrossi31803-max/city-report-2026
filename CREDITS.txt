@@ -1,0 +1,26 @@
+================================================================================
+                        PROGETTO DI ESAME UFFICIALE
+               PROGRAMMAZIONE E STRUTTURE DATI (PSD) - C99
+================================================================================
+
+ TITOLO OPERA:      Municipal Report Management System (v5.2 Definitiva)
+ ATTESTATO DI:      Sviluppo software e ingegnerizzazione della persistenza
+ FACOLTÀ:           Università degli Studi di Salerno
+ ANNO ACCADEMICO:   2025 / 2026
+
+--------------------------------------------------------------------------------
+                         INFORMAZIONI AUTORE E FIRMA
+--------------------------------------------------------------------------------
+ AUTORE:            Alessandro Rossi
+ MATRICOLA:         NF12100475
+ CODICE FISCALE:    RSSLSN03M31H703A
+ RUOLO:             Candidato / Sviluppore Unico del Software
+ STATUS:            Codice sorgente validato, allineato e congelato (v5.1)
+
+================================================================================
+ Nota di Copyright e Proprietà Intellettuale:
+ L'intero ecosistema software, i moduli di backend e la suite di test integrata 
+ sono di esclusiva proprietà intellettuale dell'autore sopra citato. È vietata 
+ la riproduzione o la duplicazione non autorizzata del codice al di fuori del 
+ contesto della presente sessione d'esame.
+================================================================================
